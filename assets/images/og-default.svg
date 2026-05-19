@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f7f5f0"/>
+  <rect x="60" y="60" width="1080" height="510" fill="none" stroke="#111" stroke-width="3"/>
+  <line x1="60" y1="180" x2="1140" y2="180" stroke="#111" stroke-width="1"/>
+  <line x1="60" y1="190" x2="1140" y2="190" stroke="#111" stroke-width="3"/>
+  <text x="600" y="140" font-family="Georgia, serif" font-weight="900" font-size="70" fill="#111" text-anchor="middle">The Daily Signal</text>
+  <text x="600" y="350" font-family="Georgia, serif" font-style="italic" font-size="36" fill="#444" text-anchor="middle">Wiadomości ze świata GEO i SEO</text>
+  <text x="600" y="520" font-family="Inter, sans-serif" font-size="20" letter-spacing="6" fill="#666" text-anchor="middle">WYDANIE CYFROWE</text>
+</svg>

@@ -1,0 +1,10 @@
+data/*.sqlite
+data/*.sqlite-journal
+uploads/*
+!uploads/.gitkeep
+!data/.gitkeep
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
