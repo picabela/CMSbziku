@@ -9,9 +9,10 @@ DirectoryIndex index.php index.html
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^(.+)/$ /$1 [R=301,L]
 
-    # Block direct access to includes and data
+    # Block direct access to includes, data and CLI bin
     RewriteRule ^includes/ - [F,L]
     RewriteRule ^data/ - [F,L]
+    RewriteRule ^bin/ - [F,L]
 
     # sitemap.xml -> sitemap.php
     RewriteRule ^sitemap\.xml$ sitemap.php [L]

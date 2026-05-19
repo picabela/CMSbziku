@@ -15,6 +15,7 @@ function db(): PDO {
         initSchema($pdo);
         if ($isNew) {
             seedData($pdo);
+            seedSources($pdo);
         }
     }
     return $pdo;
@@ -51,6 +52,48 @@ function initSchema(PDO $pdo): void {
         CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
         CREATE INDEX IF NOT EXISTS idx_posts_published ON posts(published_at);
         CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category);
+
+        CREATE TABLE IF NOT EXISTS sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            feed_url TEXT NOT NULL,
+            site_url TEXT,
+            category TEXT,
+            language TEXT DEFAULT 'en',
+            max_items_per_run INTEGER DEFAULT 2,
+            auto_publish INTEGER DEFAULT NULL,
+            enabled INTEGER DEFAULT 1,
+            last_fetched_at DATETIME,
+            last_error TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS auto_imports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER,
+            external_url TEXT,
+            external_guid TEXT,
+            guid_hash TEXT UNIQUE NOT NULL,
+            post_id INTEGER,
+            imported_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE SET NULL,
+            FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_imports_hash ON auto_imports(guid_hash);
+
+        CREATE TABLE IF NOT EXISTS auto_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            finished_at DATETIME,
+            status TEXT DEFAULT 'running',
+            items_found INTEGER DEFAULT 0,
+            items_imported INTEGER DEFAULT 0,
+            items_skipped INTEGER DEFAULT 0,
+            items_failed INTEGER DEFAULT 0,
+            log TEXT,
+            error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_runs_started ON auto_runs(started_at);
     ");
 
     $stmt = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
@@ -60,6 +103,39 @@ function initSchema(PDO $pdo): void {
         $pdo->prepare('INSERT INTO settings (key, value) VALUES (?, ?)')
             ->execute(['admin_password_hash', $hash]);
     }
+
+    $defaults = [
+        'auto_enabled' => '0',
+        'auto_token' => bin2hex(random_bytes(16)),
+        'auto_interval_minutes' => '60',
+        'auto_max_posts_per_run' => '3',
+        'auto_publish' => '1',
+        'openai_api_key' => '',
+        'openai_model' => 'gpt-4o-mini',
+        'openai_temperature' => '0.4',
+        'auto_target_language' => 'pl',
+        'auto_default_category' => 'Aktualności',
+        'auto_default_author' => 'Redakcja AI',
+        'auto_prompt' => "Jesteś dziennikarzem branżowym piszącym po polsku dla minimalistycznej gazety online o SEO, GEO, reklamie cyfrowej (ADS) i AI.\n\nNa podstawie poniższego artykułu źródłowego napisz oryginalne, ciekawe streszczenie po polsku — w formie samodzielnego newsa redakcyjnego, nie kopiując zdań ze źródła. Tekst powinien:\n- mieć ok. 300–500 słów,\n- być zwięzły, informacyjny i konkretny,\n- używać prostego języka, krótkich akapitów <p>,\n- zawierać 1-2 śródtytuły <h2> oraz listę <ul> jeśli to naturalne,\n- nie zaczynać od „W artykule…\", „Według…\" — pisz wprost,\n- na końcu dodać akapit „Dlaczego to ważne\" w 2-3 zdaniach.\n\nZwróć WYŁĄCZNIE poprawny JSON o strukturze:\n{\n  \"title\": \"chwytliwy tytuł po polsku, max 80 znaków\",\n  \"subtitle\": \"krótki podtytuł po polsku, max 140 znaków\",\n  \"excerpt\": \"zajawka 1-2 zdania po polsku, max 220 znaków\",\n  \"content\": \"treść w prostym HTML (<p>, <h2>, <ul>, <li>, <strong>, <em>, <blockquote>)\",\n  \"category\": \"jedna z: SEO, GEO, ADS, AI, Aktualności\",\n  \"keywords\": \"5-7 słów kluczowych po polsku, przecinki\",\n  \"image_alt\": \"opis sugerowanego obrazu po polsku, max 120 znaków\"\n}",
+        'auto_last_run' => '',
+    ];
+    $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+    foreach ($defaults as $k => $v) $stmt->execute([$k, $v]);
+}
+
+function seedSources(PDO $pdo): void {
+    $defaults = [
+        ['Search Engine Journal', 'https://www.searchenginejournal.com/feed/', 'https://www.searchenginejournal.com/', 'SEO'],
+        ['Search Engine Land', 'https://searchengineland.com/feed', 'https://searchengineland.com/', 'SEO'],
+        ['Search Engine Roundtable', 'https://www.seroundtable.com/atom.xml', 'https://www.seroundtable.com/', 'SEO'],
+        ['Moz Blog', 'https://moz.com/blog/feed', 'https://moz.com/blog', 'SEO'],
+        ['Google Search Central', 'https://developers.google.com/search/blog/rss', 'https://developers.google.com/search/blog', 'SEO'],
+        ['Ahrefs Blog', 'https://ahrefs.com/blog/feed/', 'https://ahrefs.com/blog/', 'SEO'],
+        ['WordStream Blog', 'https://www.wordstream.com/blog/rss.xml', 'https://www.wordstream.com/blog', 'ADS'],
+        ['OpenAI News', 'https://openai.com/news/rss.xml', 'https://openai.com/news/', 'AI'],
+    ];
+    $stmt = $pdo->prepare('INSERT INTO sources (name, feed_url, site_url, category, max_items_per_run, enabled) VALUES (?, ?, ?, ?, 2, 1)');
+    foreach ($defaults as $s) $stmt->execute($s);
 }
 
 function seedData(PDO $pdo): void {

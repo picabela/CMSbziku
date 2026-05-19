@@ -18,6 +18,8 @@ $adminTitle = $adminTitle ?? 'Panel redakcji';
         <nav class="admin-nav">
             <a href="index.php">Artykuły</a>
             <a href="edit.php">Nowy artykuł</a>
+            <a href="sources.php">Źródła</a>
+            <a href="auto.php">Auto-import</a>
             <a href="settings.php">Ustawienia</a>
             <a href="<?= e(BASE_URL) ?>/" target="_blank" rel="noopener">Strona ↗</a>
             <a href="logout.php" class="admin-nav__logout">Wyloguj</a>

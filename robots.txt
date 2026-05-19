@@ -2,8 +2,10 @@ User-agent: *
 Allow: /
 Disallow: /admin/
 Disallow: /api/
+Disallow: /cron/
 Disallow: /includes/
 Disallow: /data/
+Disallow: /bin/
 
 # AI crawlers — explicitly allowed for GEO
 User-agent: GPTBot

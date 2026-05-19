@@ -51,6 +51,31 @@ spotyka się tu z nowoczesnymi, prostokątnymi kafelkami i pełną responsywnoś
 - Tokeny CSRF dla wszystkich formularzy.
 - Hasła hashowane przez `password_hash()` (bcrypt).
 
+### Auto-import AI 🤖
+- **Samouzupełniające się artykuły** — aplikacja sama szuka świeżych wiadomości
+  ze świata SEO / GEO / ADS / AI, streszcza je przez LLM i publikuje.
+- **Konfigurowalne źródła RSS / Atom** (`/admin/sources.php`) — dowolna liczba,
+  każde z własną kategorią, limitem postów/run, flagą auto-publish.
+  Pre-seedowane 8 źródeł (Search Engine Journal, Search Engine Land,
+  Moz, Ahrefs, Google Search Central, WordStream, OpenAI News, …).
+- **Streszczanie przez OpenAI** (`/admin/auto.php`) — model, temperatura, prompt
+  redakcyjny i wszystkie parametry konfigurowalne z UI. Domyślny model:
+  `gpt-4o-mini` (tani i szybki).
+- **Prompt redakcyjny** zmusza model do zwrócenia JSON-a z polami
+  `title / subtitle / excerpt / content (HTML) / category / keywords / image_alt`
+  — gotowe do wrzutki w bazę.
+- **Sanityzacja HTML** wygenerowanego — `strip_tags` na białej liście,
+  `rel="nofollow noopener"` na linkach, automatyczne usuwanie `on*` handlerów.
+- **Atrybucja źródła** doklejana na końcu artykułu (link `nofollow noopener`).
+- **Deduplikacja** po `sha256(GUID|URL)` w tabeli `auto_imports` — ten sam
+  news nie zostanie zaimportowany dwa razy.
+- **Cron-friendly endpoint** `/cron/run.php?token=...` — token w UI, można
+  rotować. Lock plikowy zapobiega nakładającym się runom.
+- **Alternatywnie CLI**: `php bin/auto.php [--max=3]`.
+- **Pełny log** każdego uruchomienia (`/admin/runs.php`) — co znaleziono,
+  zaimportowano, pominięto, gdzie wyleciał błąd.
+- **Tryb auto-publish** globalny + override per źródło (publikuj/draft).
+
 ### SEO / GEO
 - **Przyjazne URL-e**: `/slug-artykulu`, `/kategoria/seo`.
 - Kanoniczny URL, `<title>`, meta description per strona.
@@ -165,9 +190,18 @@ Na produkcji wystarczy Apache + dołączony `.htaccess`.
 │   ├── index.php          # Lista artykułów
 │   ├── edit.php           # Edytor (Quill)
 │   ├── delete.php
+│   ├── sources.php        # CRUD źródeł RSS
+│   ├── source-edit.php
+│   ├── auto.php           # Ustawienia auto-importu (klucz OpenAI, prompt…)
+│   ├── runs.php           # Log uruchomień
 │   ├── settings.php       # Zmiana hasła
 │   ├── _layout.php
 │   └── _footer.php
+│
+├── cron/
+│   └── run.php            # Token-protected endpoint dla zewnętrznego crona
+├── bin/
+│   └── auto.php           # CLI runner (cron/systemd)
 │
 ├── assets/
 │   ├── css/
@@ -210,6 +244,21 @@ Schemat zdefiniowany w `includes/db.php`. Tworzony przy pierwszym żądaniu.
 
 Indeksy: `slug`, `status`, `published_at`, `category`.
 
+### Tabela `sources`
+RSS/Atom feedy zasilające auto-import:
+`id`, `name`, `feed_url`, `site_url`, `category`, `language`,
+`max_items_per_run`, `auto_publish` (NULL=dziedzicz globalny), `enabled`,
+`last_fetched_at`, `last_error`, `created_at`.
+
+### Tabela `auto_imports`
+Deduplikacja: `guid_hash` (UNIQUE, sha256 z GUID albo URL), `source_id`,
+`external_url`, `external_guid`, `post_id`, `imported_at`.
+
+### Tabela `auto_runs`
+Historia uruchomień scheduler-a: `started_at`, `finished_at`, `status`
+(`running / success / error / disabled / idle`), `items_found`,
+`items_imported`, `items_skipped`, `items_failed`, `log`, `error`.
+
 ### Tabela `settings`
 Klucz-wartość, przechowuje m.in. hash hasła administratora
 (`admin_password_hash`). Łatwo rozszerzalna — np. o `site_name`, `tagline`,
@@ -250,6 +299,74 @@ Klucz-wartość, przechowuje m.in. hash hasła administratora
 - Wszystkie style działają z wyłączonym JS (Quill jest tylko w panelu).
 
 ---
+
+## Auto-import AI — workflow
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  Cron HTTP   │───▶│ Fetch RSS    │───▶│ Deduplicate  │───▶│ Fetch HTML   │
+│  /cron/run   │    │ (każde       │    │ (sha256 GUID)│    │ artykułu     │
+└──────────────┘    │  źródło)     │    └──────────────┘    └──────────────┘
+                    └──────────────┘                                │
+                                                                    ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│ Sanityzacja  │◀───│ JSON →       │◀───│  OpenAI Chat │◀───│ Wycięcie     │
+│ HTML + atrybu│    │ post fields  │    │ Completions  │    │ tekstu       │
+│ -cja źródła  │    │              │    │ (json mode)  │    │ głównego     │
+└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
+        │
+        ▼
+┌──────────────┐    ┌──────────────┐
+│ Zapis do     │───▶│ Zapis        │
+│ posts        │    │ auto_imports │
+│ (published   │    │ (dedup row)  │
+│  lub draft)  │    └──────────────┘
+└──────────────┘
+```
+
+### Pierwsze uruchomienie
+
+1. Wejdź w **Auto-import → ustawienia**.
+2. Wklej klucz OpenAI (`sk-…`). Domyślny model `gpt-4o-mini`.
+3. Zaznacz **Auto-import włączony**, ewentualnie odznacz **Publikuj od razu**.
+4. Zweryfikuj listę źródeł (`/admin/sources.php`) — wyłącz te, których nie chcesz.
+5. Kliknij **Uruchom teraz** (test z `max=1`) — w 30-90 s powinien pojawić się
+   pierwszy auto-artykuł.
+6. Skopiuj URL crona z UI i wklej do crontab hostingu:
+
+   ```cron
+   0 * * * * curl -s "https://twoja-domena.pl/cron/run.php?token=XXX" > /dev/null
+   ```
+
+   …albo bez HTTP, prosto z CLI:
+
+   ```cron
+   */60 * * * * /usr/bin/php /var/www/daily-signal/bin/auto.php >> /var/log/daily-signal.log 2>&1
+   ```
+
+7. To wszystko. Strona uzupełnia się sama.
+
+### Bezpieczeństwo automatu
+
+- Endpoint cron-a wymaga tokenu (`hash_equals`), rotowalnego z UI.
+- Token i klucz OpenAI nigdy nie pojawiają się w logach.
+- Lock plikowy zapobiega nakładającym się uruchomieniom.
+- Każdy run jest atomowo logowany, błędy nie zatrzymują całego procesu —
+  jedno padnięte źródło nie blokuje pozostałych.
+- HTML wygenerowany przez LLM przechodzi przez `strip_tags` z białą listą.
+- Linki dostają `rel="nofollow noopener"` (chroni domenę przed leaking PageRank
+  do wątpliwych źródeł).
+- Domyślny user-agent `TheDailySignalBot/1.0` + BASE_URL — etyczny crawling.
+
+### Pomysły na dalszy rozwój auto-importu
+
+- **Generowanie obrazu wyróżniającego** przez DALL·E / `gpt-image-1`.
+- **Tłumaczenie wieloma językami** — feed angielski + warianty `pl/de/es`.
+- **Klasyfikacja zaawansowana** — drugi pass na model przypisujący tagi.
+- **Plagiat-check** — embedding similarity vs poprzednie posty (anty-duplikat).
+- **Slack/email digest** po każdym runie.
+- **Per-source prompt override** — inne źródła wymagają innego tonu.
+- **Web scraping (nie tylko RSS)** — np. Reddit r/SEO, Hacker News.
 
 ## Bezpieczeństwo
 

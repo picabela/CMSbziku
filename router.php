@@ -6,6 +6,9 @@
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 if ($uri !== '/' && file_exists(__DIR__ . $uri)) {
+    if (str_starts_with($uri, '/includes/') || str_starts_with($uri, '/data/') || str_starts_with($uri, '/bin/')) {
+        http_response_code(403); echo 'Forbidden'; return true;
+    }
     return false;
 }
 
