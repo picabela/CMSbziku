@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
     $action = $_POST['action'] ?? 'save';
 
     if ($action === 'save') {
-        $keys = ['auto_enabled','auto_interval_minutes','auto_max_posts_per_run','auto_max_age_days','auto_publish',
+        $keys = ['auto_enabled','auto_interval_minutes','auto_posts_per_tick','auto_discovery_interval_minutes','auto_max_age_days','auto_publish',
                  'openai_api_key','openai_model','openai_temperature',
                  'auto_target_language','auto_default_category','auto_default_author','auto_prompt'];
         foreach ($keys as $k) {
@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
 
     if ($action === 'run_now') {
         require_once __DIR__ . '/../includes/autoimport.php';
-        $lastResult = runAutoImport((int)($_POST['max'] ?? 1));
+        $lastResult = runAutoImport((int)($_POST['max'] ?? 2), true);
     }
 }
 
@@ -40,7 +40,9 @@ $cronUrl = BASE_URL . '/cron/run.php?token=' . urlencode(setting('auto_token'));
     <div class="admin-page__head">
         <h1>Auto-import AI</h1>
         <div>
-            <a href="sources.php" class="btn">Zarządzaj źródłami</a>
+            <a href="sources.php" class="btn">Źródła</a>
+            <a href="categories.php" class="btn">Kategorie</a>
+            <a href="queue.php" class="btn">Kolejka</a>
             <a href="runs.php" class="btn">Log uruchomień</a>
         </div>
     </div>
@@ -49,8 +51,10 @@ $cronUrl = BASE_URL . '/cron/run.php?token=' . urlencode(setting('auto_token'));
 
     <?php if ($lastResult): ?>
         <div class="flash flash--<?= !empty($lastResult['error']) ? 'error' : 'success' ?>">
-            Run zakończony. Znalezione: <?= (int)($lastResult['found'] ?? 0) ?>,
-            zaimportowane: <?= (int)($lastResult['imported'] ?? 0) ?>,
+            Run zakończony.
+            Znalezione: <?= (int)($lastResult['found'] ?? 0) ?>,
+            do kolejki: <?= (int)($lastResult['enqueued'] ?? 0) ?>,
+            opublikowane: <strong><?= (int)($lastResult['imported'] ?? 0) ?></strong>,
             pominięte: <?= (int)($lastResult['skipped'] ?? 0) ?>,
             błędy: <?= (int)($lastResult['failed'] ?? 0) ?>.
             <?php if (!empty($lastResult['error'])): ?> <strong><?= e($lastResult['error']) ?></strong><?php endif; ?>
@@ -98,8 +102,13 @@ $cronUrl = BASE_URL . '/cron/run.php?token=' . urlencode(setting('auto_token'));
         <label>Interwał (minuty) — tylko informacyjnie, faktyczny harmonogram ustaw w cron
             <input type="number" name="auto_interval_minutes" min="5" value="<?= e(setting('auto_interval_minutes', '60')) ?>">
         </label>
-        <label>Max liczba postów na jeden run
-            <input type="number" name="auto_max_posts_per_run" min="1" max="20" value="<?= e(setting('auto_max_posts_per_run', '3')) ?>">
+        <label>Postów na tick (max liczba artykułów wygenerowanych przy jednym uruchomieniu)
+            <input type="number" name="auto_posts_per_tick" min="1" max="20" value="<?= e(setting('auto_posts_per_tick', '2')) ?>">
+            <small class="hint">Kluczowy parametr kontroli kosztów i czasu. Reszta kandydatów czeka w kolejce do następnego ticku.</small>
+        </label>
+        <label>Discovery — odpytuj feedy nie częściej niż co (minuty)
+            <input type="number" name="auto_discovery_interval_minutes" min="5" max="1440" value="<?= e(setting('auto_discovery_interval_minutes', '60')) ?>">
+            <small class="hint">Mniejsza wartość = szybciej łapiesz świeże newsy, ale więcej zapytań do źródeł.</small>
         </label>
         <label>Max wiek artykułu (dni) — szukaj tylko od X dni do dzisiaj
             <input type="number" name="auto_max_age_days" min="1" max="365" value="<?= e(setting('auto_max_age_days', '3')) ?>">

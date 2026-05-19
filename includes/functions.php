@@ -152,3 +152,17 @@ function csrfToken(): string {
 function verifyCsrf(?string $token): bool {
     return !empty($_SESSION['csrf']) && is_string($token) && hash_equals($_SESSION['csrf'], $token);
 }
+
+/**
+ * Sanityzacja listy ID-ków z bulk POST: tylko liczby całkowite > 0.
+ */
+function bulkIds($raw): array {
+    if (!is_array($raw)) return [];
+    $ids = array_map('intval', $raw);
+    $ids = array_filter($ids, fn($i) => $i > 0);
+    return array_values(array_unique($ids));
+}
+
+function allCategories(): array {
+    return db()->query('SELECT * FROM categories ORDER BY sort_order, name')->fetchAll();
+}

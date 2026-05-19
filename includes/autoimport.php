@@ -1,11 +1,25 @@
 <?php
 /**
- * Auto-import pipeline:
- *   1. Pobiera RSS/Atom z wszystkich aktywnych źródeł.
- *   2. Deduplikacja po hash(GUID|URL).
- *   3. Dla nowych itemów pobiera pełną treść (jeśli się da), wycina tekst.
- *   4. Wysyła do OpenAI z promptem redakcyjnym, otrzymuje JSON.
- *   5. Zapisuje jako post + zapisuje rekord w auto_imports.
+ * Auto-import pipeline (dwufazowy, z kolejką w bazie):
+ *
+ *   FAZA A — Discovery (szybka, ~kilka sekund/źródło):
+ *     - Pobiera RSS/Atom albo listing HTML z aktywnych źródeł.
+ *     - Filtruje po dedup hashu (sha256 z GUID|URL) — sprawdzane jest
+ *       JEDNOCZEŚNIE auto_imports (już opublikowane) i auto_queue (już w kolejce).
+ *     - Dla nowych elementów wstawia rekordy do auto_queue ze statusem 'pending'.
+ *     - Discovery dla danego źródła odpala się tylko jeśli minęło
+ *       auto_discovery_interval_minutes od ostatniego pobrania.
+ *
+ *   FAZA B — Processing (wolna, limit auto_posts_per_tick):
+ *     - Bierze N pending elementów z kolejki (FIFO, najstarsze najpierw).
+ *     - Atomowo oznacza je 'processing'.
+ *     - Dla każdego: pobiera HTML, wyciąga datę i treść, sumaryzuje OpenAI,
+ *       tworzy post, oznacza 'done'.
+ *     - Failure → attempts++, exponential backoff (5 min, 30 min, 2 h),
+ *       po wyczerpaniu max_attempts → 'failed'.
+ *
+ * Każdy tick crona robi obie fazy. Dzięki temu run trwa max ~kilkadziesiąt sekund,
+ * a kolejka rozładowuje się płynnie nawet przy 100+ artykułach.
  *
  * Wywoływane przez /cron/run.php (HTTP z tokenem) lub bin/auto.php (CLI).
  * Lock plikowy zapobiega nakładającym się uruchomieniom.
@@ -21,17 +35,22 @@ class AutoImporter {
     private int $imported = 0;
     private int $skipped = 0;
     private int $failed = 0;
+    private int $enqueued = 0;
 
     public function __construct() {
         $this->pdo = db();
     }
 
-    public function run(?int $maxPostsOverride = null): array {
-        $maxPosts = $maxPostsOverride ?? (int)setting('auto_max_posts_per_run', '3');
+    /**
+     * @param int|null $maxPostsOverride  Wymuszony limit (ignoruje auto_enabled).
+     * @param bool $force  Pomija sprawdzanie auto_enabled (przycisk "Uruchom teraz").
+     */
+    public function run(?int $maxPostsOverride = null, bool $force = false): array {
+        $perTick = $maxPostsOverride ?? (int)setting('auto_posts_per_tick', '2');
         $this->startRun();
 
         try {
-            if (setting('auto_enabled', '0') !== '1' && $maxPostsOverride === null) {
+            if (!$force && setting('auto_enabled', '0') !== '1') {
                 $this->logLine('Auto-import jest wyłączony w ustawieniach. Pomijam.');
                 $this->finishRun('disabled');
                 return $this->result();
@@ -41,23 +60,11 @@ class AutoImporter {
                 throw new RuntimeException('Brak OpenAI API key w ustawieniach.');
             }
 
-            $sources = $this->pdo->query('SELECT * FROM sources WHERE enabled = 1 ORDER BY id')->fetchAll();
-            if (!$sources) {
-                $this->logLine('Brak aktywnych źródeł.');
-                $this->finishRun('idle');
-                return $this->result();
-            }
+            // FAZA A — discovery
+            $this->discover();
 
-            $imported = 0;
-            foreach ($sources as $source) {
-                if ($imported >= $maxPosts) {
-                    $this->logLine("Osiągnięto limit {$maxPosts} postów na ten run.");
-                    break;
-                }
-                $remaining = $maxPosts - $imported;
-                $perSource = min((int)$source['max_items_per_run'], $remaining);
-                $imported += $this->processSource($source, $perSource);
-            }
+            // FAZA B — przetwarzanie kolejki
+            $this->processQueue($perTick);
 
             $this->finishRun('success');
         } catch (Throwable $e) {
@@ -68,98 +75,218 @@ class AutoImporter {
         return $this->result();
     }
 
-    private function processSource(array $source, int $maxItems): int {
-        $this->logLine("→ Źródło #{$source['id']}: {$source['name']} [" . ($source['source_type'] ?: 'rss') . "]");
+    // ============================================================
+    //  FAZA A — DISCOVERY
+    // ============================================================
+
+    private function discover(): void {
+        $this->logLine('━━ FAZA A: Discovery ━━');
+        $discoveryInterval = max(1, (int)setting('auto_discovery_interval_minutes', '60'));
+        $cutoffDiscovery = date('Y-m-d H:i:s', time() - $discoveryInterval * 60);
+
+        $sources = $this->pdo->query('SELECT * FROM sources WHERE enabled = 1 ORDER BY id')->fetchAll();
+        if (!$sources) {
+            $this->logLine('Brak aktywnych źródeł.');
+            return;
+        }
+
+        foreach ($sources as $source) {
+            if ($source['last_fetched_at'] && $source['last_fetched_at'] > $cutoffDiscovery) {
+                $this->logLine("  ⊙ Skipped #{$source['id']} {$source['name']} — pobrane {$source['last_fetched_at']}");
+                continue;
+            }
+            try {
+                $count = $this->discoverSource($source);
+                $this->enqueued += $count;
+            } catch (Throwable $e) {
+                $this->updateSource($source['id'], $e->getMessage());
+                $this->logLine("  ✗ {$source['name']}: " . $e->getMessage());
+            }
+        }
+        $this->logLine("Faza A zakończona — dodano do kolejki: {$this->enqueued} elementów.");
+    }
+
+    private function discoverSource(array $source): int {
+        $this->logLine("→ Discovery #{$source['id']}: {$source['name']} [" . ($source['source_type'] ?: 'rss') . "]");
 
         $globalMaxAge = max(1, (int)setting('auto_max_age_days', '3'));
         $maxAgeDays = !empty($source['max_age_days']) ? (int)$source['max_age_days'] : $globalMaxAge;
         $cutoff = time() - ($maxAgeDays * 86400);
-        $this->logLine("  Filtr wieku: max {$maxAgeDays} dni (cutoff " . date('Y-m-d H:i', $cutoff) . ').');
 
-        try {
-            $items = (($source['source_type'] ?? 'rss') === 'html')
-                ? $this->fetchListing($source)
-                : $this->fetchFeed($source['feed_url']);
-        } catch (Throwable $e) {
-            $this->failed++;
-            $this->updateSource($source['id'], $e->getMessage());
-            $this->logLine("  ✗ Błąd źródła: " . $e->getMessage());
-            return 0;
-        }
+        $items = (($source['source_type'] ?? 'rss') === 'html')
+            ? $this->fetchListing($source)
+            : $this->fetchFeed($source['feed_url']);
 
-        $this->logLine('  Znaleziono ' . count($items) . ' kandydatów.');
         $this->found += count($items);
-        $imported = 0;
+        $this->logLine('  Znaleziono ' . count($items) . ' kandydatów w źródle.');
 
+        $added = 0;
+        $maxPerSource = (int)$source['max_items_per_run'];
+        $considered = 0;
         foreach ($items as $item) {
-            if ($imported >= $maxItems) break;
-            $title = $item['title'] ?: $item['url'];
-            try {
-                $hash = hash('sha256', $item['guid'] ?: $item['url']);
-                if ($this->alreadyImported($hash)) {
-                    $this->skipped++;
-                    $this->logLine('  ↺ Już zaimportowane: ' . mb_substr($title, 0, 70));
-                    continue;
-                }
-
-                // Wstępna data z RSS (jeśli mamy)
-                $rssTs = !empty($item['published']) ? @strtotime($item['published']) : null;
-                if ($rssTs !== null && $rssTs > 0 && $rssTs < $cutoff) {
-                    $this->skipped++;
-                    $this->logLine('  ⏰ Za stare (RSS ' . date('Y-m-d', $rssTs) . '): ' . mb_substr($title, 0, 60));
-                    continue;
-                }
-
-                // Pobieramy stronę: tu dostajemy zarówno datę z HTML, jak i treść
-                $html = null;
-                try {
-                    $html = $this->httpGet($item['url'], 20);
-                } catch (Throwable $e) {
-                    $this->logLine('  ! Nie udało się pobrać strony: ' . $e->getMessage());
-                }
-
-                $htmlTs = $html ? $this->extractDateFromHtml($html) : null;
-                $effectiveTs = $rssTs ?: $htmlTs;
-
-                if ($effectiveTs === null) {
-                    $this->skipped++;
-                    $this->logLine('  ⊘ Brak daty — pomijam: ' . mb_substr($title, 0, 60));
-                    continue;
-                }
-                if ($effectiveTs < $cutoff) {
-                    $this->skipped++;
-                    $this->logLine('  ⏰ Za stare (' . date('Y-m-d', $effectiveTs) . '): ' . mb_substr($title, 0, 60));
-                    continue;
-                }
-
-                $item['published_ts'] = $effectiveTs;
-                if (empty($item['title']) && $html) {
-                    $item['title'] = $this->extractTitleFromHtml($html) ?: $item['url'];
-                    $title = $item['title'];
-                }
-
-                $this->logLine("  · Importuję [" . date('Y-m-d', $effectiveTs) . "]: " . mb_substr($title, 0, 70));
-
-                $content = '';
-                if ($html) $content = $this->extractMainText($html);
-                if (mb_strlen($content) < 400) $content = trim(strip_tags($item['description'] ?? ''));
-                if (mb_strlen($content) < 200) {
-                    throw new RuntimeException('Za mało treści do streszczenia (' . mb_strlen($content) . ' znaków).');
-                }
-
-                $generated = $this->summarize($content, $item, $source);
-                $postId = $this->savePost($generated, $item, $source);
-                $this->markImported($hash, $source['id'], $item, $postId);
-                $imported++;
-                $this->imported++;
-                $this->logLine("    ✓ Post #{$postId}: " . $generated['title']);
-            } catch (Throwable $e) {
-                $this->failed++;
-                $this->logLine("    ✗ " . mb_substr($title, 0, 50) . ' — ' . $e->getMessage());
+            if ($considered >= $maxPerSource) break;
+            $hash = hash('sha256', $item['guid'] ?: $item['url']);
+            if ($this->alreadyImported($hash) || $this->alreadyInQueue($hash)) {
+                continue;
             }
+
+            // Wstępny age-filter z RSS-a (jeśli mamy datę). Brak daty z RSS-a NIE
+            // pomija — finalny check po dacie z HTML-a robimy w fazie B.
+            $rssTs = !empty($item['published']) ? @strtotime($item['published']) : null;
+            if ($rssTs !== null && $rssTs > 0 && $rssTs < $cutoff) {
+                continue;
+            }
+
+            $this->enqueueItem($source['id'], $item, $hash, $rssTs ?: null);
+            $added++;
+            $considered++;
         }
         $this->updateSource($source['id'], null);
-        return $imported;
+        $this->logLine("  + Do kolejki: {$added}");
+        return $added;
+    }
+
+    private function alreadyInQueue(string $hash): bool {
+        $stmt = $this->pdo->prepare('SELECT id FROM auto_queue WHERE guid_hash = ?');
+        $stmt->execute([$hash]);
+        return (bool)$stmt->fetch();
+    }
+
+    private function enqueueItem(int $sourceId, array $item, string $hash, ?int $publishedTs): void {
+        $stmt = $this->pdo->prepare("
+            INSERT INTO auto_queue (source_id, external_url, external_guid, guid_hash, title, description, published_ts, status, next_attempt_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)
+        ");
+        $stmt->execute([
+            $sourceId,
+            $item['url'],
+            $item['guid'] ?? '',
+            $hash,
+            mb_substr($item['title'] ?? '', 0, 500),
+            mb_substr($item['description'] ?? '', 0, 2000),
+            $publishedTs,
+        ]);
+    }
+
+    // ============================================================
+    //  FAZA B — PROCESSING
+    // ============================================================
+
+    private function processQueue(int $maxPerTick): void {
+        $this->logLine("━━ FAZA B: Processing (max {$maxPerTick} na ten tick) ━━");
+
+        $rows = $this->pdo->prepare("
+            SELECT * FROM auto_queue
+            WHERE status = 'pending'
+              AND (next_attempt_at IS NULL OR next_attempt_at <= datetime('now'))
+            ORDER BY id ASC
+            LIMIT ?
+        ");
+        $rows->bindValue(1, $maxPerTick, PDO::PARAM_INT);
+        $rows->execute();
+        $items = $rows->fetchAll();
+
+        if (!$items) {
+            $this->logLine('  Kolejka pusta.');
+            return;
+        }
+
+        // Atomowo "claimujemy" wybrane wiersze.
+        $ids = array_map(fn($r) => (int)$r['id'], $items);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $this->pdo->prepare("UPDATE auto_queue SET status = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id IN ($placeholders) AND status = 'pending'")
+            ->execute($ids);
+
+        $this->logLine('  Przejmuję z kolejki: #' . implode(', #', $ids));
+
+        foreach ($items as $row) {
+            $this->processQueueItem($row);
+        }
+    }
+
+    private function processQueueItem(array $row): void {
+        $sourceStmt = $this->pdo->prepare('SELECT * FROM sources WHERE id = ?');
+        $sourceStmt->execute([$row['source_id']]);
+        $source = $sourceStmt->fetch();
+        if (!$source) {
+            $this->markQueueFailed((int)$row['id'], 'Źródło zostało usunięte.');
+            $this->failed++;
+            return;
+        }
+
+        $globalMaxAge = max(1, (int)setting('auto_max_age_days', '3'));
+        $maxAgeDays = !empty($source['max_age_days']) ? (int)$source['max_age_days'] : $globalMaxAge;
+        $cutoff = time() - ($maxAgeDays * 86400);
+
+        $title = $row['title'] ?: $row['external_url'];
+        $this->logLine('  · Przetwarzam #' . $row['id'] . ': ' . mb_substr($title, 0, 70));
+
+        try {
+            $html = $this->httpGet($row['external_url'], 20);
+            $htmlTs = $this->extractDateFromHtml($html);
+            $effectiveTs = $row['published_ts'] ? (int)$row['published_ts'] : $htmlTs;
+
+            if ($effectiveTs === null) {
+                $this->markQueueSkipped((int)$row['id'], 'Brak wykrytej daty publikacji.');
+                $this->skipped++;
+                $this->logLine('    ⊘ Brak daty — pomijam.');
+                return;
+            }
+            if ($effectiveTs < $cutoff) {
+                $this->markQueueSkipped((int)$row['id'], 'Artykuł starszy niż ' . $maxAgeDays . ' dni (' . date('Y-m-d', $effectiveTs) . ').');
+                $this->skipped++;
+                $this->logLine('    ⏰ Za stary (' . date('Y-m-d', $effectiveTs) . ') — pomijam.');
+                return;
+            }
+
+            $content = $this->extractMainText($html);
+            if (mb_strlen($content) < 400) $content = trim(strip_tags($row['description'] ?? ''));
+            if (mb_strlen($content) < 200) {
+                throw new RuntimeException('Za mało treści do streszczenia (' . mb_strlen($content) . ' znaków).');
+            }
+
+            $item = [
+                'title' => $row['title'] ?: ($this->extractTitleFromHtml($html) ?: $row['external_url']),
+                'url' => $row['external_url'],
+                'guid' => $row['external_guid'] ?? '',
+                'description' => $row['description'] ?? '',
+                'published_ts' => $effectiveTs,
+            ];
+
+            $generated = $this->summarize($content, $item, $source);
+            $postId = $this->savePost($generated, $item, $source);
+            $this->markQueueDone((int)$row['id'], $postId);
+            $this->markImported($row['guid_hash'], (int)$source['id'], $item, $postId);
+            $this->imported++;
+            $this->logLine("    ✓ Post #{$postId}: " . $generated['title']);
+        } catch (Throwable $e) {
+            $this->failed++;
+            $attempts = (int)$row['attempts'] + 1;
+            $maxAttempts = (int)$row['max_attempts'];
+            if ($attempts >= $maxAttempts) {
+                $this->markQueueFailed((int)$row['id'], $e->getMessage());
+                $this->logLine("    ✗ FAILED po {$attempts} próbach: " . $e->getMessage());
+            } else {
+                $backoff = [5, 30, 120][$attempts - 1] ?? 120;
+                $nextAttempt = date('Y-m-d H:i:s', time() + $backoff * 60);
+                $this->pdo->prepare("UPDATE auto_queue SET status='pending', attempts=?, next_attempt_at=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+                    ->execute([$attempts, $nextAttempt, $e->getMessage(), $row['id']]);
+                $this->logLine("    ↻ Retry #{$attempts}/{$maxAttempts} za {$backoff} min: " . $e->getMessage());
+            }
+        }
+    }
+
+    private function markQueueDone(int $id, int $postId): void {
+        $this->pdo->prepare("UPDATE auto_queue SET status='done', post_id=?, error=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+            ->execute([$postId, $id]);
+    }
+    private function markQueueSkipped(int $id, string $reason): void {
+        $this->pdo->prepare("UPDATE auto_queue SET status='skipped', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+            ->execute([$reason, $id]);
+    }
+    private function markQueueFailed(int $id, string $reason): void {
+        $this->pdo->prepare("UPDATE auto_queue SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+            ->execute([$reason, $id]);
     }
 
     private function fetchListing(array $source): array {
@@ -386,9 +513,18 @@ class AutoImporter {
         $temp = (float)setting('openai_temperature', '0.4');
         $systemPrompt = setting('auto_prompt');
 
+        // Lista kategorii do wyboru — model musi przypisać artykuł do JEDNEJ z nich.
+        $cats = $this->pdo->query('SELECT name, description FROM categories ORDER BY sort_order, name')->fetchAll();
+        $catLines = array_map(fn($c) => '- ' . $c['name'] . ($c['description'] ? ': ' . $c['description'] : ''), $cats);
+        $catList = implode("\n", $catLines);
+        $catNames = array_map(fn($c) => $c['name'], $cats);
+
+        $catPrompt = "\n\nDostępne kategorie (wybierz DOKŁADNIE JEDNĄ pasującą i wpisz jej nazwę w pole \"category\"):\n" . $catList;
+
         $user = "Źródło: {$source['name']}\n"
               . "Oryginalny tytuł: {$item['title']}\n"
-              . "URL źródła: {$item['url']}\n\n"
+              . "URL źródła: {$item['url']}\n"
+              . $catPrompt . "\n\n"
               . "Treść źródłowa:\n" . $sourceText;
 
         $payload = [
@@ -429,7 +565,33 @@ class AutoImporter {
         foreach (['title','content'] as $req) {
             if (empty($parsed[$req])) throw new RuntimeException("OpenAI: brak pola '{$req}'.");
         }
+
+        // Normalizuj kategorię — model musi się zmieścić w istniejącej liście.
+        $parsed['category'] = $this->normalizeCategory($parsed['category'] ?? '', $source, $catNames);
         return $parsed;
+    }
+
+    private function normalizeCategory(string $candidate, array $source, array $available): string {
+        $cand = trim($candidate);
+        if ($cand !== '') {
+            $low = mb_strtolower($cand);
+            foreach ($available as $name) {
+                if (mb_strtolower($name) === $low) return $name;
+            }
+        }
+        // Fallback do kategorii źródła (jeśli istnieje na liście) albo do domyślnej.
+        if (!empty($source['category'])) {
+            $low = mb_strtolower($source['category']);
+            foreach ($available as $name) {
+                if (mb_strtolower($name) === $low) return $name;
+            }
+        }
+        $default = setting('auto_default_category', 'Aktualności');
+        $low = mb_strtolower($default);
+        foreach ($available as $name) {
+            if (mb_strtolower($name) === $low) return $name;
+        }
+        return $available[0] ?? 'Aktualności';
     }
 
     private function savePost(array $gen, array $item, array $source): int {
@@ -437,7 +599,7 @@ class AutoImporter {
         $subtitle = trim($gen['subtitle'] ?? '');
         $excerpt = trim($gen['excerpt'] ?? '');
         $content = $this->cleanHtml($gen['content']);
-        $category = trim($gen['category'] ?? ($source['category'] ?: setting('auto_default_category', 'Aktualności')));
+        $category = trim($gen['category'] ?? setting('auto_default_category', 'Aktualności'));
         $alt = trim($gen['image_alt'] ?? '');
         $keywords = trim($gen['keywords'] ?? '');
         $author = setting('auto_default_author', 'Redakcja AI');
@@ -525,8 +687,8 @@ class AutoImporter {
     }
 
     private function finishRun(string $status, ?string $error = null): void {
-        $this->pdo->prepare('UPDATE auto_runs SET finished_at = CURRENT_TIMESTAMP, status = ?, items_found = ?, items_imported = ?, items_skipped = ?, items_failed = ?, log = ?, error = ? WHERE id = ?')
-            ->execute([$status, $this->found, $this->imported, $this->skipped, $this->failed, implode("\n", $this->log), $error, $this->runId]);
+        $this->pdo->prepare('UPDATE auto_runs SET finished_at = CURRENT_TIMESTAMP, status = ?, items_found = ?, items_imported = ?, items_skipped = ?, items_failed = ?, items_enqueued = ?, log = ?, error = ? WHERE id = ?')
+            ->execute([$status, $this->found, $this->imported, $this->skipped, $this->failed, $this->enqueued, implode("\n", $this->log), $error, $this->runId]);
     }
 
     private function logLine(string $msg): void {
@@ -537,6 +699,7 @@ class AutoImporter {
         return [
             'run_id' => $this->runId,
             'found' => $this->found,
+            'enqueued' => $this->enqueued,
             'imported' => $this->imported,
             'skipped' => $this->skipped,
             'failed' => $this->failed,
@@ -545,14 +708,14 @@ class AutoImporter {
     }
 }
 
-function runAutoImport(?int $maxPosts = null): array {
+function runAutoImport(?int $maxPosts = null, bool $force = false): array {
     $lockFile = sys_get_temp_dir() . '/daily-signal-auto-' . md5(__DIR__) . '.lock';
     $fh = fopen($lockFile, 'c+');
     if (!$fh || !flock($fh, LOCK_EX | LOCK_NB)) {
         return ['error' => 'Inny run jest już aktywny.'];
     }
     try {
-        return (new AutoImporter())->run($maxPosts);
+        return (new AutoImporter())->run($maxPosts, $force);
     } finally {
         flock($fh, LOCK_UN);
         fclose($fh);

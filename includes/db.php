@@ -14,6 +14,7 @@ function db(): PDO {
         $pdo->exec('PRAGMA foreign_keys = ON;');
         initSchema($pdo);
         if ($isNew) {
+            seedCategories($pdo);
             seedData($pdo);
             seedSources($pdo);
         }
@@ -98,16 +99,55 @@ function initSchema(PDO $pdo): void {
             items_imported INTEGER DEFAULT 0,
             items_skipped INTEGER DEFAULT 0,
             items_failed INTEGER DEFAULT 0,
+            items_enqueued INTEGER DEFAULT 0,
             log TEXT,
             error TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_runs_started ON auto_runs(started_at);
+
+        CREATE TABLE IF NOT EXISTS auto_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER,
+            external_url TEXT NOT NULL,
+            external_guid TEXT,
+            guid_hash TEXT UNIQUE NOT NULL,
+            title TEXT,
+            description TEXT,
+            published_ts INTEGER,
+            status TEXT DEFAULT 'pending',
+            attempts INTEGER DEFAULT 0,
+            max_attempts INTEGER DEFAULT 3,
+            next_attempt_at DATETIME,
+            error TEXT,
+            post_id INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_queue_status ON auto_queue(status);
+        CREATE INDEX IF NOT EXISTS idx_queue_next ON auto_queue(next_attempt_at);
+        CREATE INDEX IF NOT EXISTS idx_queue_hash ON auto_queue(guid_hash);
+
+        CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            slug TEXT UNIQUE NOT NULL,
+            description TEXT,
+            sort_order INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     ");
 
     // Lekkie migracje dla istniejących instalacji
     addColumnIfMissing($pdo, 'sources', 'source_type', "TEXT DEFAULT 'rss'");
     addColumnIfMissing($pdo, 'sources', 'link_selector', "TEXT");
     addColumnIfMissing($pdo, 'sources', 'max_age_days', "INTEGER");
+    addColumnIfMissing($pdo, 'auto_runs', 'items_enqueued', "INTEGER DEFAULT 0");
+
+    // Seed domyślnych kategorii (jeśli pusto)
+    if ((int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn() === 0) {
+        seedCategories($pdo);
+    }
 
     $stmt = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
     $stmt->execute(['admin_password_hash']);
@@ -123,6 +163,8 @@ function initSchema(PDO $pdo): void {
         'auto_interval_minutes' => '60',
         'auto_max_posts_per_run' => '3',
         'auto_max_age_days' => '3',
+        'auto_posts_per_tick' => '2',
+        'auto_discovery_interval_minutes' => '60',
         'auto_publish' => '1',
         'openai_api_key' => '',
         'openai_model' => 'gpt-4o-mini',
@@ -135,6 +177,19 @@ function initSchema(PDO $pdo): void {
     ];
     $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach ($defaults as $k => $v) $stmt->execute([$k, $v]);
+}
+
+function seedCategories(PDO $pdo): void {
+    $defaults = [
+        ['SEO',          'seo',          'Klasyczne pozycjonowanie i optymalizacja pod wyszukiwarki.'],
+        ['GEO',          'geo',          'Generative Engine Optimization — widoczność w AI: ChatGPT, Perplexity, AI Overviews.'],
+        ['ADS',          'ads',          'Reklamy płatne: Google Ads, Meta Ads, programmatic, retargeting.'],
+        ['AI',           'ai',           'Sztuczna inteligencja w marketingu i nowe modele językowe.'],
+        ['Technical SEO','technical-seo','Performance, Core Web Vitals, dane strukturalne, indeksacja.'],
+        ['Aktualności',  'aktualnosci',  'Wszystko, co nie pasuje do wyspecjalizowanych kategorii.'],
+    ];
+    $stmt = $pdo->prepare('INSERT OR IGNORE INTO categories (name, slug, description, sort_order) VALUES (?, ?, ?, ?)');
+    foreach ($defaults as $i => $c) $stmt->execute([$c[0], $c[1], $c[2], $i * 10]);
 }
 
 function seedSources(PDO $pdo): void {

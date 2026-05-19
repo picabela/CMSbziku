@@ -1,0 +1,99 @@
+<?php
+$adminTitle = 'Kategorie';
+require __DIR__ . '/_layout.php';
+
+$flash = $_SESSION['flash'] ?? null;
+unset($_SESSION['flash']);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null)) {
+    $action = $_POST['bulk_action'] ?? $_POST['action'] ?? '';
+    $pdo = db();
+
+    if ($action === 'delete_single') {
+        $id = (int)$_POST['id'];
+        $pdo->prepare('DELETE FROM categories WHERE id = ?')->execute([$id]);
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Kategoria usunięta. Artykuły zachowują nazwę kategorii w tabeli posts.'];
+        header('Location: categories.php'); exit;
+    }
+
+    $ids = bulkIds($_POST['ids'] ?? []);
+    if ($ids && $action === 'delete') {
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $pdo->prepare("DELETE FROM categories WHERE id IN ($placeholders)")->execute($ids);
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => count($ids) . ' kategorii usuniętych.'];
+        header('Location: categories.php'); exit;
+    }
+}
+
+$cats = db()->query('SELECT c.*, (SELECT COUNT(*) FROM posts p WHERE p.category = c.name) AS post_count FROM categories c ORDER BY sort_order, name')->fetchAll();
+?>
+<div class="admin-page">
+    <div class="admin-page__head">
+        <h1>Kategorie</h1>
+        <a href="category-edit.php" class="btn btn--primary">+ Nowa kategoria</a>
+    </div>
+    <?php if ($flash): ?><div class="flash flash--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
+    <p class="hint">Kategorie definiują, gdzie AI może umieścić wygenerowany artykuł. Opis pomaga modelowi trafniej klasyfikować.</p>
+
+    <?php if (empty($cats)): ?>
+        <p class="empty">Brak kategorii. <a href="category-edit.php">Dodaj pierwszą</a>.</p>
+    <?php else: ?>
+        <form method="post">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <div class="bulk-bar">
+                <label class="bulk-bar__select-all"><input type="checkbox" id="select-all"> zaznacz wszystkie</label>
+                <select name="bulk_action" required>
+                    <option value="">— akcja zbiorcza —</option>
+                    <option value="delete">Usuń</option>
+                </select>
+                <button type="submit" class="btn" onclick="return confirmBulk(this.form)">Wykonaj</button>
+            </div>
+            <table class="admin-table">
+                <thead>
+                    <tr><th class="admin-table__check"></th><th>Nazwa</th><th>Slug</th><th>Opis (dla AI)</th><th>Kolejność</th><th>Artykuły</th><th>Akcje</th></tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($cats as $c): ?>
+                        <tr>
+                            <td><input type="checkbox" name="ids[]" value="<?= (int)$c['id'] ?>" class="bulk-check"></td>
+                            <td><a href="category-edit.php?id=<?= (int)$c['id'] ?>" class="admin-table__title"><?= e($c['name']) ?></a></td>
+                            <td><code><?= e($c['slug']) ?></code></td>
+                            <td><?= e($c['description'] ?: '—') ?></td>
+                            <td><?= (int)$c['sort_order'] ?></td>
+                            <td><?= (int)$c['post_count'] ?></td>
+                            <td class="admin-table__actions">
+                                <a href="category-edit.php?id=<?= (int)$c['id'] ?>">Edytuj</a>
+                                <button type="button" class="link-btn link-btn--danger" onclick="doInline(<?= (int)$c['id'] ?>)">Usuń</button>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </form>
+        <form id="inline-form" method="post" style="display:none">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="action" value="delete_single">
+            <input type="hidden" name="id" id="inline-id">
+        </form>
+        <script>
+        (function(){
+            const all = document.getElementById('select-all');
+            const checks = document.querySelectorAll('.bulk-check');
+            all.addEventListener('change', () => { checks.forEach(c => c.checked = all.checked); });
+            window.confirmBulk = function(form) {
+                const action = form.bulk_action.value;
+                const ids = form.querySelectorAll('.bulk-check:checked').length;
+                if (!action) { alert('Wybierz akcję.'); return false; }
+                if (!ids) { alert('Zaznacz przynajmniej jedną.'); return false; }
+                return confirm('Usunąć ' + ids + ' kategorii? Artykuły zachowają nazwę kategorii.');
+            };
+            window.doInline = function(id) {
+                if (!confirm('Usunąć tę kategorię?')) return;
+                document.getElementById('inline-id').value = id;
+                document.getElementById('inline-form').submit();
+            };
+        })();
+        </script>
+    <?php endif; ?>
+</div>
+<?php require __DIR__ . '/_footer.php';

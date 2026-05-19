@@ -17,8 +17,10 @@ $adminTitle = $adminTitle ?? 'Panel redakcji';
         <a href="index.php" class="admin-header__logo"><?= e(SITE_NAME) ?> <span>· CMS</span></a>
         <nav class="admin-nav">
             <a href="index.php">Artykuły</a>
-            <a href="edit.php">Nowy artykuł</a>
+            <a href="edit.php">Nowy</a>
+            <a href="categories.php">Kategorie</a>
             <a href="sources.php">Źródła</a>
+            <a href="queue.php">Kolejka</a>
             <a href="auto.php">Auto-import</a>
             <a href="settings.php">Ustawienia</a>
             <a href="<?= e(BASE_URL) ?>/" target="_blank" rel="noopener">Strona ↗</a>

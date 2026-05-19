@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$existingCategories = array_column(getCategories(), 'category');
+$allCats = allCategories();
 ?>
 <div class="admin-page admin-page--editor">
     <div class="admin-page__head">
@@ -117,12 +117,12 @@ $existingCategories = array_column(getCategories(), 'category');
                 <fieldset>
                     <legend>Klasyfikacja</legend>
                     <label>Kategoria
-                        <input type="text" name="category" list="categories" value="<?= e($post['category'] ?? 'Aktualności') ?>">
-                        <datalist id="categories">
-                            <?php foreach ($existingCategories as $c): ?>
-                                <option value="<?= e($c) ?>">
+                        <select name="category">
+                            <?php $cur = $post['category'] ?? 'Aktualności'; foreach ($allCats as $c): ?>
+                                <option value="<?= e($c['name']) ?>" <?= $c['name'] === $cur ? 'selected' : '' ?>><?= e($c['name']) ?></option>
                             <?php endforeach; ?>
-                        </datalist>
+                        </select>
+                        <small class="hint"><a href="categories.php">Zarządzaj kategoriami</a></small>
                     </label>
                     <label>Autor
                         <input type="text" name="author" value="<?= e($post['author'] ?? 'Redakcja') ?>">
