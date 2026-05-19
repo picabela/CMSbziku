@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
     $action = $_POST['action'] ?? 'save';
 
     if ($action === 'save') {
-        $keys = ['auto_enabled','auto_interval_minutes','auto_max_posts_per_run','auto_publish',
+        $keys = ['auto_enabled','auto_interval_minutes','auto_max_posts_per_run','auto_max_age_days','auto_publish',
                  'openai_api_key','openai_model','openai_temperature',
                  'auto_target_language','auto_default_category','auto_default_author','auto_prompt'];
         foreach ($keys as $k) {
@@ -100,6 +100,10 @@ $cronUrl = BASE_URL . '/cron/run.php?token=' . urlencode(setting('auto_token'));
         </label>
         <label>Max liczba postów na jeden run
             <input type="number" name="auto_max_posts_per_run" min="1" max="20" value="<?= e(setting('auto_max_posts_per_run', '3')) ?>">
+        </label>
+        <label>Max wiek artykułu (dni) — szukaj tylko od X dni do dzisiaj
+            <input type="number" name="auto_max_age_days" min="1" max="365" value="<?= e(setting('auto_max_age_days', '3')) ?>">
+            <small class="hint">Artykuły bez wykrytej daty publikacji są zawsze pomijane. Pojedyncze źródło może to nadpisać.</small>
         </label>
 
         <h2 style="margin-top:1.5rem">OpenAI</h2>

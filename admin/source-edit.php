@@ -21,25 +21,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'site_url' => trim($_POST['site_url'] ?? ''),
             'category' => trim($_POST['category'] ?? ''),
             'language' => trim($_POST['language'] ?? 'en'),
+            'source_type' => in_array($_POST['source_type'] ?? '', ['rss','html'], true) ? $_POST['source_type'] : 'rss',
+            'link_selector' => trim($_POST['link_selector'] ?? '') ?: null,
             'max_items_per_run' => max(1, (int)($_POST['max_items_per_run'] ?? 2)),
+            'max_age_days' => $_POST['max_age_days'] === '' ? null : max(1, (int)$_POST['max_age_days']),
             'enabled' => isset($_POST['enabled']) ? 1 : 0,
         ];
         $ap = $_POST['auto_publish'] ?? 'inherit';
         $data['auto_publish'] = $ap === 'yes' ? 1 : ($ap === 'no' ? 0 : null);
 
         if ($data['name'] === '') $errors[] = 'Nazwa wymagana.';
-        if (!filter_var($data['feed_url'], FILTER_VALIDATE_URL)) $errors[] = 'Feed URL musi być poprawnym adresem.';
+        if (!filter_var($data['feed_url'], FILTER_VALIDATE_URL)) $errors[] = 'URL musi być poprawnym adresem.';
 
         if (!$errors) {
             $pdo = db();
             if ($source) {
-                $stmt = $pdo->prepare('UPDATE sources SET name=:name, feed_url=:feed_url, site_url=:site_url, category=:category, language=:language, max_items_per_run=:mx, auto_publish=:ap, enabled=:enabled WHERE id=:id');
+                $stmt = $pdo->prepare('UPDATE sources SET name=:name, feed_url=:feed_url, site_url=:site_url, category=:category, language=:language, source_type=:source_type, link_selector=:link_selector, max_items_per_run=:mx, max_age_days=:max_age_days, auto_publish=:ap, enabled=:enabled WHERE id=:id');
                 $data['id'] = $source['id'];
                 $data['mx'] = $data['max_items_per_run']; unset($data['max_items_per_run']);
                 $data['ap'] = $data['auto_publish']; unset($data['auto_publish']);
                 $stmt->execute($data);
             } else {
-                $stmt = $pdo->prepare('INSERT INTO sources (name, feed_url, site_url, category, language, max_items_per_run, auto_publish, enabled) VALUES (:name, :feed_url, :site_url, :category, :language, :mx, :ap, :enabled)');
+                $stmt = $pdo->prepare('INSERT INTO sources (name, feed_url, site_url, category, language, source_type, link_selector, max_items_per_run, max_age_days, auto_publish, enabled) VALUES (:name, :feed_url, :site_url, :category, :language, :source_type, :link_selector, :mx, :max_age_days, :ap, :enabled)');
                 $data['mx'] = $data['max_items_per_run']; unset($data['max_items_per_run']);
                 $data['ap'] = $data['auto_publish']; unset($data['auto_publish']);
                 $stmt->execute($data);
@@ -51,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$current = $source ?: ['name'=>'', 'feed_url'=>'', 'site_url'=>'', 'category'=>'', 'language'=>'en', 'max_items_per_run'=>2, 'auto_publish'=>null, 'enabled'=>1];
+$current = $source ?: ['name'=>'', 'feed_url'=>'', 'site_url'=>'', 'category'=>'', 'language'=>'en', 'source_type'=>'rss', 'link_selector'=>'', 'max_items_per_run'=>2, 'max_age_days'=>null, 'auto_publish'=>null, 'enabled'=>1];
 $apVal = $current['auto_publish'];
 ?>
 <div class="admin-page admin-page--editor">
@@ -67,7 +70,19 @@ $apVal = $current['auto_publish'];
         <div class="editor-form__grid">
             <div class="editor-form__main">
                 <label>Nazwa<input type="text" name="name" required value="<?= e($current['name']) ?>"></label>
-                <label>Feed URL (RSS lub Atom)<input type="url" name="feed_url" required value="<?= e($current['feed_url']) ?>" placeholder="https://example.com/feed/"></label>
+                <label>Typ źródła
+                    <select name="source_type" id="source-type">
+                        <option value="rss" <?= ($current['source_type'] ?? 'rss') === 'rss' ? 'selected' : '' ?>>RSS / Atom feed</option>
+                        <option value="html" <?= ($current['source_type'] ?? '') === 'html' ? 'selected' : '' ?>>Listing HTML (gdy strona nie ma feedu)</option>
+                    </select>
+                </label>
+                <label>URL feedu (RSS) lub listingu (HTML)
+                    <input type="url" name="feed_url" required value="<?= e($current['feed_url']) ?>" placeholder="https://example.com/feed/  lub  https://example.com/blog">
+                </label>
+                <label>Selektor linków do artykułów (tylko HTML)
+                    <input type="text" name="link_selector" value="<?= e($current['link_selector'] ?? '') ?>" placeholder="np. h2.entry-title a  lub XPath //article//h2/a">
+                    <small class="hint">Opcjonalny. Domyślnie szuka linków w &lt;article&gt;, &lt;h1-3&gt;. CSS lub XPath.</small>
+                </label>
                 <label>Strona główna źródła (opcjonalnie)<input type="url" name="site_url" value="<?= e($current['site_url']) ?>" placeholder="https://example.com"></label>
             </div>
             <aside class="editor-form__side">
@@ -76,6 +91,10 @@ $apVal = $current['auto_publish'];
                     <label>Kategoria docelowa<input type="text" name="category" value="<?= e($current['category']) ?>" placeholder="SEO / GEO / ADS / AI"></label>
                     <label>Język źródła<input type="text" name="language" value="<?= e($current['language']) ?>" placeholder="en"></label>
                     <label>Max artykułów na run<input type="number" min="1" max="20" name="max_items_per_run" value="<?= (int)$current['max_items_per_run'] ?>"></label>
+                    <label>Max wiek artykułu (dni)
+                        <input type="number" min="1" max="365" name="max_age_days" value="<?= $current['max_age_days'] !== null ? (int)$current['max_age_days'] : '' ?>" placeholder="puste = globalny">
+                        <small class="hint">Starsze artykuły będą pomijane. Bez daty → pomijane zawsze.</small>
+                    </label>
                     <label>Auto-publish dla tego źródła
                         <select name="auto_publish">
                             <option value="inherit" <?= $apVal === null ? 'selected' : '' ?>>Dziedzicz z ustawień globalnych</option>

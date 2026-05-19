@@ -54,10 +54,24 @@ spotyka się tu z nowoczesnymi, prostokątnymi kafelkami i pełną responsywnoś
 ### Auto-import AI 🤖
 - **Samouzupełniające się artykuły** — aplikacja sama szuka świeżych wiadomości
   ze świata SEO / GEO / ADS / AI, streszcza je przez LLM i publikuje.
-- **Konfigurowalne źródła RSS / Atom** (`/admin/sources.php`) — dowolna liczba,
-  każde z własną kategorią, limitem postów/run, flagą auto-publish.
-  Pre-seedowane 8 źródeł (Search Engine Journal, Search Engine Land,
-  Moz, Ahrefs, Google Search Central, WordStream, OpenAI News, …).
+- **Dwa typy źródeł** (`/admin/sources.php`):
+  - **RSS / Atom** — klasyczne feedy.
+  - **HTML listing** — strony bez RSS (np. Google Search Central, Anthropic
+    News, Search Engine Land). Importer wchodzi na stronę z nagłówkami,
+    wyciąga linki do artykułów, a potem dla każdego pobiera pełną treść.
+- **Selektor linków per źródło** — CSS (`article h2 a`) lub XPath
+  (`//article//h2/a`). Pusty → heurystyka (`<article>`, `<h2>`, `<h3>`).
+- **Filtr wieku artykułu** — globalny i opcjonalnie per źródło. Domyślnie
+  „od 3 dni do dzisiaj". Artykuły **bez wykrytej daty publikacji są zawsze
+  pomijane** — zero starych newsów na stronie.
+- Detekcja daty z: `<meta property="article:published_time">`,
+  `<meta itemprop="datePublished">`, JSON-LD (`NewsArticle`/`Article`/
+  `BlogPosting`, także w `@graph`), `<time datetime>`.
+- **Deduplikacja** po `sha256(GUID|URL)` — ten sam news nigdy się
+  nie powtórzy, nawet w innym źródle.
+- 9 pre-seedowanych źródeł (Search Engine Journal, Moz, Ahrefs, OpenAI News,
+  Google Search Central [HTML], Search Engine Land [HTML], Search Engine
+  Roundtable [HTML], WordStream [HTML], Anthropic News [HTML]).
 - **Streszczanie przez OpenAI** (`/admin/auto.php`) — model, temperatura, prompt
   redakcyjny i wszystkie parametry konfigurowalne z UI. Domyślny model:
   `gpt-4o-mini` (tani i szybki).
@@ -245,9 +259,11 @@ Schemat zdefiniowany w `includes/db.php`. Tworzony przy pierwszym żądaniu.
 Indeksy: `slug`, `status`, `published_at`, `category`.
 
 ### Tabela `sources`
-RSS/Atom feedy zasilające auto-import:
+Źródła zasilające auto-import:
 `id`, `name`, `feed_url`, `site_url`, `category`, `language`,
-`max_items_per_run`, `auto_publish` (NULL=dziedzicz globalny), `enabled`,
+`source_type` (`rss` / `html`), `link_selector` (CSS lub XPath, dla html),
+`max_items_per_run`, `max_age_days` (NULL=globalny),
+`auto_publish` (NULL=dziedzicz globalny), `enabled`,
 `last_fetched_at`, `last_error`, `created_at`.
 
 ### Tabela `auto_imports`

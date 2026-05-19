@@ -36,7 +36,7 @@ $sources = db()->query('SELECT * FROM sources ORDER BY enabled DESC, name')->fet
     <?php else: ?>
         <table class="admin-table">
             <thead>
-                <tr><th>Nazwa</th><th>Kategoria</th><th>Limit/run</th><th>Auto-publish</th><th>Status</th><th>Ostatnio</th><th>Akcje</th></tr>
+                <tr><th>Nazwa</th><th>Typ</th><th>Kategoria</th><th>Limit/run</th><th>Max wiek</th><th>Auto-publish</th><th>Status</th><th>Ostatnio</th><th>Akcje</th></tr>
             </thead>
             <tbody>
                 <?php foreach ($sources as $s): ?>
@@ -48,8 +48,10 @@ $sources = db()->query('SELECT * FROM sources ORDER BY enabled DESC, name')->fet
                                 <div class="admin-table__error">⚠ <?= e($s['last_error']) ?></div>
                             <?php endif; ?>
                         </td>
+                        <td><span class="pill pill--<?= ($s['source_type'] ?? 'rss') === 'html' ? 'draft' : 'published' ?>"><?= e(strtoupper($s['source_type'] ?? 'rss')) ?></span></td>
                         <td><?= e($s['category'] ?: '—') ?></td>
                         <td><?= (int)$s['max_items_per_run'] ?></td>
+                        <td><?= $s['max_age_days'] !== null ? (int)$s['max_age_days'] . ' dni' : '<em>globalny</em>' ?></td>
                         <td><?= $s['auto_publish'] === null ? '<em>domyślnie</em>' : ((int)$s['auto_publish'] === 1 ? 'tak' : 'draft') ?></td>
                         <td><span class="pill pill--<?= $s['enabled'] ? 'published' : 'draft' ?>"><?= $s['enabled'] ? 'aktywne' : 'wyłączone' ?></span></td>
                         <td><?= $s['last_fetched_at'] ? e(formatDate($s['last_fetched_at'])) : '—' ?></td>

@@ -69,30 +69,84 @@ class AutoImporter {
     }
 
     private function processSource(array $source, int $maxItems): int {
-        $this->logLine("→ Źródło #{$source['id']}: {$source['name']}");
+        $this->logLine("→ Źródło #{$source['id']}: {$source['name']} [" . ($source['source_type'] ?: 'rss') . "]");
+
+        $globalMaxAge = max(1, (int)setting('auto_max_age_days', '3'));
+        $maxAgeDays = !empty($source['max_age_days']) ? (int)$source['max_age_days'] : $globalMaxAge;
+        $cutoff = time() - ($maxAgeDays * 86400);
+        $this->logLine("  Filtr wieku: max {$maxAgeDays} dni (cutoff " . date('Y-m-d H:i', $cutoff) . ').');
+
         try {
-            $items = $this->fetchFeed($source['feed_url']);
+            $items = (($source['source_type'] ?? 'rss') === 'html')
+                ? $this->fetchListing($source)
+                : $this->fetchFeed($source['feed_url']);
         } catch (Throwable $e) {
             $this->failed++;
             $this->updateSource($source['id'], $e->getMessage());
-            $this->logLine("  ✗ Błąd feed: " . $e->getMessage());
+            $this->logLine("  ✗ Błąd źródła: " . $e->getMessage());
             return 0;
         }
 
-        $this->logLine('  Znaleziono ' . count($items) . ' itemów w feedzie.');
+        $this->logLine('  Znaleziono ' . count($items) . ' kandydatów.');
         $this->found += count($items);
         $imported = 0;
 
         foreach ($items as $item) {
             if ($imported >= $maxItems) break;
+            $title = $item['title'] ?: $item['url'];
             try {
                 $hash = hash('sha256', $item['guid'] ?: $item['url']);
                 if ($this->alreadyImported($hash)) {
                     $this->skipped++;
+                    $this->logLine('  ↺ Już zaimportowane: ' . mb_substr($title, 0, 70));
                     continue;
                 }
-                $this->logLine("  · Importuję: " . substr($item['title'], 0, 70));
-                $content = $this->fetchArticleText($item['url'], $item['description']);
+
+                // Wstępna data z RSS (jeśli mamy)
+                $rssTs = !empty($item['published']) ? @strtotime($item['published']) : null;
+                if ($rssTs !== null && $rssTs > 0 && $rssTs < $cutoff) {
+                    $this->skipped++;
+                    $this->logLine('  ⏰ Za stare (RSS ' . date('Y-m-d', $rssTs) . '): ' . mb_substr($title, 0, 60));
+                    continue;
+                }
+
+                // Pobieramy stronę: tu dostajemy zarówno datę z HTML, jak i treść
+                $html = null;
+                try {
+                    $html = $this->httpGet($item['url'], 20);
+                } catch (Throwable $e) {
+                    $this->logLine('  ! Nie udało się pobrać strony: ' . $e->getMessage());
+                }
+
+                $htmlTs = $html ? $this->extractDateFromHtml($html) : null;
+                $effectiveTs = $rssTs ?: $htmlTs;
+
+                if ($effectiveTs === null) {
+                    $this->skipped++;
+                    $this->logLine('  ⊘ Brak daty — pomijam: ' . mb_substr($title, 0, 60));
+                    continue;
+                }
+                if ($effectiveTs < $cutoff) {
+                    $this->skipped++;
+                    $this->logLine('  ⏰ Za stare (' . date('Y-m-d', $effectiveTs) . '): ' . mb_substr($title, 0, 60));
+                    continue;
+                }
+
+                $item['published_ts'] = $effectiveTs;
+                if (empty($item['title']) && $html) {
+                    $item['title'] = $this->extractTitleFromHtml($html) ?: $item['url'];
+                    $title = $item['title'];
+                }
+
+                $this->logLine("  · Importuję [" . date('Y-m-d', $effectiveTs) . "]: " . mb_substr($title, 0, 70));
+
+                $content = '';
+                if ($html) $content = $this->extractMainText($html);
+                if (mb_strlen($content) < 400) $content = trim(strip_tags($item['description'] ?? ''));
+                if (mb_strlen($content) < 200) {
+                    throw new RuntimeException('Za mało treści do streszczenia (' . mb_strlen($content) . ' znaków).');
+                }
+
                 $generated = $this->summarize($content, $item, $source);
                 $postId = $this->savePost($generated, $item, $source);
                 $this->markImported($hash, $source['id'], $item, $postId);
@@ -101,11 +155,173 @@ class AutoImporter {
                 $this->logLine("    ✓ Post #{$postId}: " . $generated['title']);
             } catch (Throwable $e) {
                 $this->failed++;
-                $this->logLine("    ✗ " . $e->getMessage());
+                $this->logLine("    ✗ " . mb_substr($title, 0, 50) . ' — ' . $e->getMessage());
             }
         }
         $this->updateSource($source['id'], null);
         return $imported;
+    }
+
+    private function fetchListing(array $source): array {
+        $baseUrl = $source['feed_url'];
+        $html = $this->httpGet($baseUrl, 20);
+
+        libxml_use_internal_errors(true);
+        $doc = new DOMDocument();
+        $doc->loadHTML('<?xml encoding="utf-8"?>' . $html);
+        libxml_clear_errors();
+        $xpath = new DOMXPath($doc);
+
+        $selector = trim($source['link_selector'] ?? '');
+        if ($selector !== '') {
+            $expr = $this->isXPath($selector) ? $selector : $this->cssToXPath($selector);
+        } else {
+            $expr = '//article//a[@href] | //h1//a[@href] | //h2//a[@href] | //h3//a[@href]';
+        }
+
+        $nodes = @$xpath->query($expr);
+        if (!$nodes) {
+            throw new RuntimeException('Selektor nic nie znalazł: ' . $expr);
+        }
+
+        $baseHost = parse_url($baseUrl, PHP_URL_HOST);
+        $items = [];
+        $seen = [];
+        foreach ($nodes as $node) {
+            $href = trim($node->getAttribute('href'));
+            $text = trim(preg_replace('/\s+/u', ' ', $node->textContent));
+            if ($href === '' || $href[0] === '#') continue;
+            $abs = $this->resolveUrl($href, $baseUrl);
+            if (!$abs) continue;
+            // Trzymaj się tej samej domeny
+            if (parse_url($abs, PHP_URL_HOST) !== $baseHost) continue;
+            // Pomiń linki listingowe / strony kategorii
+            $path = parse_url($abs, PHP_URL_PATH) ?? '';
+            if ($path === '' || $path === '/') continue;
+            if ($abs === $baseUrl) continue;
+            if (mb_strlen($text) < 12) continue;  // za krótki tekst kotwicy — pewnie nie tytuł
+            if (isset($seen[$abs])) continue;
+            $seen[$abs] = true;
+            $items[] = [
+                'title' => $text,
+                'url' => $abs,
+                'guid' => $abs,
+                'description' => '',
+                'published' => '',
+            ];
+            if (count($items) >= 30) break;
+        }
+        return $items;
+    }
+
+    private function extractDateFromHtml(string $html): ?int {
+        // 1) <meta property="article:published_time" ...>
+        if (preg_match('#<meta[^>]+property=["\']article:(?:published_time|modified_time)["\'][^>]+content=["\']([^"\']+)["\']#i', $html, $m)) {
+            $t = strtotime($m[1]); if ($t) return $t;
+        }
+        // 2) <meta name="..." content="ISO">
+        foreach (['datePublished','dateModified','pubdate','date','article:published','article:modified'] as $attr) {
+            if (preg_match('#<meta[^>]+(?:name|itemprop|property)=["\']' . preg_quote($attr, '#') . '["\'][^>]+content=["\']([^"\']+)["\']#i', $html, $m)) {
+                $t = strtotime($m[1]); if ($t) return $t;
+            }
+        }
+        // 3) JSON-LD (NewsArticle / Article / BlogPosting)
+        if (preg_match_all('#<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>#si', $html, $matches)) {
+            foreach ($matches[1] as $json) {
+                $data = json_decode($json, true);
+                if (!is_array($data)) continue;
+                $found = $this->jsonLdDate($data);
+                if ($found) return $found;
+            }
+        }
+        // 4) <time datetime="...">
+        if (preg_match('#<time[^>]+datetime=["\']([^"\']+)["\']#i', $html, $m)) {
+            $t = strtotime($m[1]); if ($t) return $t;
+        }
+        return null;
+    }
+
+    private function jsonLdDate($data): ?int {
+        if (isset($data['@graph']) && is_array($data['@graph'])) {
+            foreach ($data['@graph'] as $node) {
+                $r = $this->jsonLdDate($node);
+                if ($r) return $r;
+            }
+        }
+        $type = $data['@type'] ?? '';
+        $types = is_array($type) ? $type : [$type];
+        $articleLike = array_intersect($types, ['NewsArticle','Article','BlogPosting','Report','TechArticle']);
+        if (!empty($articleLike) || isset($data['datePublished']) || isset($data['dateModified'])) {
+            foreach (['datePublished','dateModified','dateCreated'] as $k) {
+                if (!empty($data[$k])) {
+                    $t = strtotime((string)$data[$k]);
+                    if ($t) return $t;
+                }
+            }
+        }
+        if (is_array($data)) {
+            foreach ($data as $v) {
+                if (is_array($v)) {
+                    $r = $this->jsonLdDate($v);
+                    if ($r) return $r;
+                }
+            }
+        }
+        return null;
+    }
+
+    private function extractTitleFromHtml(string $html): ?string {
+        if (preg_match('#<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']#i', $html, $m)) {
+            return html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+        if (preg_match('#<h1[^>]*>(.*?)</h1>#si', $html, $m)) {
+            return trim(html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+        if (preg_match('#<title[^>]*>(.*?)</title>#si', $html, $m)) {
+            return trim(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+        return null;
+    }
+
+    private function isXPath(string $s): bool {
+        return $s !== '' && ($s[0] === '/' || str_starts_with($s, '(') || str_starts_with($s, './'));
+    }
+
+    private function cssToXPath(string $css): string {
+        // Konwersja prostych selektorów CSS na XPath. Wystarcza dla typowych przypadków.
+        $parts = preg_split('/\s+/', trim($css));
+        $xpath = '';
+        foreach ($parts as $part) {
+            $segment = '*';
+            if (preg_match('/^([a-z][a-z0-9]*)/i', $part, $m)) {
+                $segment = $m[1];
+                $part = substr($part, strlen($m[1]));
+            }
+            $predicates = [];
+            if (preg_match('/#([\w-]+)/', $part, $m)) {
+                $predicates[] = "@id='" . $m[1] . "'";
+            }
+            if (preg_match_all('/\.([\w-]+)/', $part, $mm)) {
+                foreach ($mm[1] as $cls) {
+                    $predicates[] = "contains(concat(' ', normalize-space(@class), ' '), ' {$cls} ')";
+                }
+            }
+            $node = $segment . ($predicates ? '[' . implode(' and ', $predicates) . ']' : '');
+            $xpath .= '//' . $node;
+        }
+        return $xpath ?: '//a';
+    }
+
+    private function resolveUrl(string $href, string $base): ?string {
+        if (preg_match('#^https?://#i', $href)) return $href;
+        $b = parse_url($base);
+        if (!$b || empty($b['scheme']) || empty($b['host'])) return null;
+        $origin = $b['scheme'] . '://' . $b['host'];
+        if ($href === '' || $href[0] === '?') return null;
+        if ($href[0] === '/') return $origin . $href;
+        $basePath = $b['path'] ?? '/';
+        $basePath = preg_replace('#/[^/]*$#', '/', $basePath);
+        return $origin . $basePath . $href;
     }
 
     private function fetchFeed(string $url): array {
@@ -152,17 +368,6 @@ class AutoImporter {
         $stmt = $this->pdo->prepare('SELECT id FROM auto_imports WHERE guid_hash = ?');
         $stmt->execute([$hash]);
         return (bool)$stmt->fetch();
-    }
-
-    private function fetchArticleText(string $url, string $fallback): string {
-        try {
-            $html = $this->httpGet($url, 20);
-            $text = $this->extractMainText($html);
-            if (mb_strlen($text) > 400) return $text;
-        } catch (Throwable $e) {
-            // fall back
-        }
-        return trim(strip_tags($fallback));
     }
 
     private function extractMainText(string $html): string {
@@ -291,15 +496,19 @@ class AutoImporter {
             ->execute([$error, $id]);
     }
 
-    private function httpGet(string $url, int $timeout = 15): string {
+    protected function httpGet(string $url, int $timeout = 15): string {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
             CURLOPT_TIMEOUT => $timeout,
-            CURLOPT_USERAGENT => 'TheDailySignalBot/1.0 (+' . BASE_URL . ')',
-            CURLOPT_HTTPHEADER => ['Accept: */*'],
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; TheDailySignal/1.0; +' . BASE_URL . ')',
+            CURLOPT_HTTPHEADER => [
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language: en-US,en;q=0.7,pl;q=0.5',
+            ],
+            CURLOPT_ENCODING => '',
         ]);
         $body = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);

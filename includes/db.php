@@ -21,6 +21,14 @@ function db(): PDO {
     return $pdo;
 }
 
+function addColumnIfMissing(PDO $pdo, string $table, string $column, string $definition): void {
+    $cols = $pdo->query("PRAGMA table_info({$table})")->fetchAll();
+    foreach ($cols as $c) {
+        if ($c['name'] === $column) return;
+    }
+    $pdo->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+}
+
 function initSchema(PDO $pdo): void {
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS posts (
@@ -96,6 +104,11 @@ function initSchema(PDO $pdo): void {
         CREATE INDEX IF NOT EXISTS idx_runs_started ON auto_runs(started_at);
     ");
 
+    // Lekkie migracje dla istniejących instalacji
+    addColumnIfMissing($pdo, 'sources', 'source_type', "TEXT DEFAULT 'rss'");
+    addColumnIfMissing($pdo, 'sources', 'link_selector', "TEXT");
+    addColumnIfMissing($pdo, 'sources', 'max_age_days', "INTEGER");
+
     $stmt = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
     $stmt->execute(['admin_password_hash']);
     if (!$stmt->fetch()) {
@@ -109,6 +122,7 @@ function initSchema(PDO $pdo): void {
         'auto_token' => bin2hex(random_bytes(16)),
         'auto_interval_minutes' => '60',
         'auto_max_posts_per_run' => '3',
+        'auto_max_age_days' => '3',
         'auto_publish' => '1',
         'openai_api_key' => '',
         'openai_model' => 'gpt-4o-mini',
@@ -124,17 +138,20 @@ function initSchema(PDO $pdo): void {
 }
 
 function seedSources(PDO $pdo): void {
+    // [name, feed_url, site_url, category, source_type, link_selector]
     $defaults = [
-        ['Search Engine Journal', 'https://www.searchenginejournal.com/feed/', 'https://www.searchenginejournal.com/', 'SEO'],
-        ['Search Engine Land', 'https://searchengineland.com/feed', 'https://searchengineland.com/', 'SEO'],
-        ['Search Engine Roundtable', 'https://www.seroundtable.com/atom.xml', 'https://www.seroundtable.com/', 'SEO'],
-        ['Moz Blog', 'https://moz.com/blog/feed', 'https://moz.com/blog', 'SEO'],
-        ['Google Search Central', 'https://developers.google.com/search/blog/rss', 'https://developers.google.com/search/blog', 'SEO'],
-        ['Ahrefs Blog', 'https://ahrefs.com/blog/feed/', 'https://ahrefs.com/blog/', 'SEO'],
-        ['WordStream Blog', 'https://www.wordstream.com/blog/rss.xml', 'https://www.wordstream.com/blog', 'ADS'],
-        ['OpenAI News', 'https://openai.com/news/rss.xml', 'https://openai.com/news/', 'AI'],
+        ['Search Engine Journal', 'https://www.searchenginejournal.com/feed/', 'https://www.searchenginejournal.com/', 'SEO', 'rss', null],
+        ['Moz Blog', 'https://moz.com/blog/feed', 'https://moz.com/blog', 'SEO', 'rss', null],
+        ['Ahrefs Blog', 'https://ahrefs.com/blog/feed/', 'https://ahrefs.com/blog/', 'SEO', 'rss', null],
+        ['OpenAI News', 'https://openai.com/news/rss.xml', 'https://openai.com/news/', 'AI', 'rss', null],
+        // Bez RSS — listing HTML:
+        ['Google Search Central', 'https://developers.google.com/search/blog', 'https://developers.google.com/search/blog', 'SEO', 'html', null],
+        ['Search Engine Land', 'https://searchengineland.com/library/seo', 'https://searchengineland.com/', 'SEO', 'html', null],
+        ['Search Engine Roundtable', 'https://www.seroundtable.com/', 'https://www.seroundtable.com/', 'SEO', 'html', null],
+        ['WordStream Blog', 'https://www.wordstream.com/blog', 'https://www.wordstream.com/blog', 'ADS', 'html', null],
+        ['Anthropic News', 'https://www.anthropic.com/news', 'https://www.anthropic.com/', 'AI', 'html', null],
     ];
-    $stmt = $pdo->prepare('INSERT INTO sources (name, feed_url, site_url, category, max_items_per_run, enabled) VALUES (?, ?, ?, ?, 2, 1)');
+    $stmt = $pdo->prepare('INSERT INTO sources (name, feed_url, site_url, category, source_type, link_selector, max_items_per_run, enabled) VALUES (?, ?, ?, ?, ?, ?, 2, 1)');
     foreach ($defaults as $s) $stmt->execute($s);
 }
 
