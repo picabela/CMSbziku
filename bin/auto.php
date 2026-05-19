@@ -14,10 +14,11 @@ if (PHP_SAPI !== 'cli') {
 
 require_once __DIR__ . '/../includes/autoimport.php';
 
-$opts = getopt('', ['max::']);
+$opts = getopt('', ['max::', 'force']);
 $max = isset($opts['max']) ? (int)$opts['max'] : null;
+$force = isset($opts['force']);
 
-$result = runAutoImport($max);
+$result = runAutoImport($max, $force);
 echo "Auto-import zakończony.\n";
 echo "Run ID:   {$result['run_id']}\n";
 echo "Found:    {$result['found']}\n";

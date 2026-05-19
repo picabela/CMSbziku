@@ -10,12 +10,20 @@ if ($selectedId) {
     $selected = $stmt->fetch();
 }
 $runs = db()->query('SELECT * FROM auto_runs ORDER BY started_at DESC LIMIT 50')->fetchAll();
+$hasRunning = false;
+foreach ($runs as $r) if ($r['status'] === 'running') { $hasRunning = true; break; }
 ?>
+<?php if ($hasRunning): ?>
+    <meta http-equiv="refresh" content="3">
+<?php endif; ?>
 <div class="admin-page">
     <div class="admin-page__head">
         <h1>Log uruchomień auto-importu</h1>
         <a href="auto.php" class="btn">← Auto-import</a>
     </div>
+    <?php if ($hasRunning): ?>
+        <div class="flash flash--success">⏳ Run jest aktualnie aktywny — strona odświeży się automatycznie co 3 s.</div>
+    <?php endif; ?>
 
     <?php if (empty($runs)): ?>
         <p class="empty">Brak uruchomień. Idź do <a href="auto.php">Auto-import</a> i kliknij „Uruchom teraz”.</p>

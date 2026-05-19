@@ -388,6 +388,11 @@ body {
 }
 .filter-tabs a.is-active .filter-tabs__count { background: var(--ink); color: #fff; border-color: var(--ink); }
 
+.radio-group { border: 1px solid var(--rule); padding: 0.75rem 1rem; margin: 0.5rem 0 1rem; }
+.radio-group legend { padding: 0 0.5rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.radio-group .checkbox { display: flex; align-items: baseline; gap: 0.5rem; font-weight: 400; text-transform: none; letter-spacing: normal; }
+.radio-group .checkbox small { color: var(--muted); }
+
 .pill--pending    { background: #fffbe6; color: #856404; border-color: #856404; }
 .pill--processing { background: #d1ecf1; color: #0c5460; border-color: #0c5460; }
 .pill--done       { background: #d4edda; color: #155724; border-color: #155724; }

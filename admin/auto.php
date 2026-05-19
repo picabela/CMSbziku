@@ -30,7 +30,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
 
     if ($action === 'run_now') {
         require_once __DIR__ . '/../includes/autoimport.php';
-        $lastResult = runAutoImport((int)($_POST['max'] ?? 2), true);
+        $max = (int)($_POST['max'] ?? 2);
+        $mode = $_POST['mode'] ?? 'bg';
+
+        if ($mode === 'sync') {
+            $lastResult = runAutoImport($max, true);
+        } else {
+            $spawn = spawnAutoImportInBackground($max, true);
+            if (isset($spawn['callback'])) {
+                $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Wystartowane w tle. Zajrzyj do logu za chwilę.'];
+                $spawn['callback'](); // fastcgi_finish_request + run
+                exit;
+            }
+            if (!empty($spawn['error'])) {
+                // Fallback synchronous if no background method available
+                $lastResult = runAutoImport($max, true);
+            } else {
+                $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Run wystartowany w tle (' . $spawn['method'] . '). Sprawdź log za chwilę.'];
+                header('Location: runs.php');
+                exit;
+            }
+        }
     }
 }
 
@@ -65,24 +85,29 @@ $cronUrl = BASE_URL . '/cron/run.php?token=' . urlencode(setting('auto_token'));
     <?php endif; ?>
 
     <div class="settings-card">
-        <h2>Uruchom teraz (test)</h2>
+        <h2>Uruchom teraz</h2>
         <form method="post">
             <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
             <input type="hidden" name="action" value="run_now">
-            <label>Ile artykułów wygenerować w tym teście?
-                <input type="number" name="max" min="1" max="10" value="1">
+            <label>Ile artykułów wygenerować?
+                <input type="number" name="max" min="1" max="10" value="2">
             </label>
-            <button class="btn btn--primary" type="submit">Uruchom teraz</button>
+            <fieldset class="radio-group">
+                <legend>Tryb</legend>
+                <label class="checkbox"><input type="radio" name="mode" value="bg" checked> W tle <small class="hint">(zalecane — strona nie zawiesi się, postęp w „Log uruchomień")</small></label>
+                <label class="checkbox"><input type="radio" name="mode" value="sync"> Synchronicznie <small class="hint">(czekaj na wynik — pokaże live log poniżej)</small></label>
+            </fieldset>
+            <button class="btn btn--primary" type="submit">Uruchom</button>
         </form>
-        <p class="hint">Wymaga klucza OpenAI poniżej. Jeden run może zająć 30-90 sekund.</p>
     </div>
 
     <div class="settings-card">
         <h2>Cron — token i URL</h2>
-        <p>Ustaw cron na swoim hostingu, by ten URL był wywoływany cyklicznie:</p>
+        <p>Ustaw <strong>cron na swoim hostingu</strong> (w panelu hostido: <em>Cron / Zadania harmonogramu</em>), by ten URL był wywoływany cyklicznie:</p>
         <code class="code-block"><?= e($cronUrl) ?></code>
-        <p class="hint">Przykładowa linia w crontab (co godzinę):<br>
-            <code>0 * * * * curl -s "<?= e($cronUrl) ?>" &gt; /dev/null</code></p>
+        <p class="hint">Przykładowa linia w crontab (co 15 min):<br>
+            <code>*/15 * * * * curl -s "<?= e($cronUrl) ?>" &gt; /dev/null</code></p>
+        <p class="hint"><strong>Ważne:</strong> cron działa na serwerze hostingu — niezależnie od tego, czy masz włączoną przeglądarkę, komputer czy telefon. Po jednorazowym ustawieniu możesz spać spokojnie, hosting sam odpala zadanie o wskazanych godzinach.</p>
         <form method="post" style="margin-top:1rem">
             <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
             <input type="hidden" name="action" value="rotate_token">

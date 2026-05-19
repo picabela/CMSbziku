@@ -721,3 +721,53 @@ function runAutoImport(?int $maxPosts = null, bool $force = false): array {
         fclose($fh);
     }
 }
+
+/**
+ * Uruchamia run w tle. Próbujemy kolejno:
+ *   1. exec() ze spawnem procesu (najczyściej, jeśli hosting na to pozwala).
+ *   2. cURL do /cron/run.php z króciutkim timeoutem (połączenie zamykane,
+ *      ale endpoint dalej pracuje dzięki ignore_user_abort(true)).
+ *   3. fastcgi_finish_request() + synchroniczny run w tym samym procesie
+ *      (response już wysłany, dalsza praca niewidoczna dla klienta).
+ *
+ * Zwraca informację, którą metodą poszło — przydatne do flash message.
+ */
+function spawnAutoImportInBackground(?int $maxPosts = null, bool $force = true): array {
+    // --- Próba 1: exec spawn ---
+    if (function_exists('exec') && !in_array('exec', explode(',', (string)ini_get('disable_functions')), true)) {
+        $bin = escapeshellarg(__DIR__ . '/../bin/auto.php');
+        $args = '--max=' . (int)($maxPosts ?? (int)setting('auto_posts_per_tick', '2'));
+        if ($force) $args .= ' --force';
+        // Detach: redirect stdout/stderr, & at end
+        @exec("php $bin $args > /dev/null 2>&1 &");
+        return ['method' => 'exec', 'message' => 'Uruchomione w tle (CLI spawn).'];
+    }
+
+    // --- Próba 2: cURL hit z króciutkim timeoutem ---
+    $token = setting('auto_token');
+    if ($token && function_exists('curl_init')) {
+        $url = BASE_URL . '/cron/run.php?token=' . urlencode($token);
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT_MS => 300,
+            CURLOPT_CONNECTTIMEOUT_MS => 300,
+            CURLOPT_NOSIGNAL => 1,
+            CURLOPT_HEADER => false,
+            CURLOPT_FOLLOWLOCATION => false,
+        ]);
+        @curl_exec($ch);
+        curl_close($ch);
+        return ['method' => 'curl', 'message' => 'Uruchomione w tle (HTTP fire-and-forget).'];
+    }
+
+    // --- Próba 3: fastcgi_finish_request + run w tym samym procesie ---
+    if (function_exists('fastcgi_finish_request')) {
+        return ['method' => 'fastcgi', 'callback' => function() use ($maxPosts, $force) {
+            fastcgi_finish_request();
+            runAutoImport($maxPosts, $force);
+        }];
+    }
+
+    return ['method' => 'none', 'error' => 'Brak mechanizmu do uruchomienia w tle. Zostanie wykonane synchronicznie.'];
+}
