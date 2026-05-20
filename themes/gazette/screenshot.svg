@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">
+    <rect width="400" height="300" fill="#ffffff"/>
+    <rect x="0" y="0" width="400" height="22" fill="#c8102e"/>
+    <text x="200" y="15" font-family="Inter, sans-serif" font-size="10" fill="#fff" text-anchor="middle" font-weight="600">BREAKING · POLITYKA · GIEŁDA</text>
+    <text x="200" y="65" font-family="Georgia, serif" font-size="32" fill="#1a1a1a" text-anchor="middle" font-weight="900" letter-spacing="-1">GAZETTE</text>
+    <text x="200" y="82" font-family="serif" font-size="10" font-style="italic" fill="#666" text-anchor="middle">Wiadomości międzynarodowe</text>
+    <rect x="0" y="95" width="400" height="3" fill="#c8102e"/>
+    <text x="80" y="115" font-family="Inter, sans-serif" font-size="10" fill="#1a1a1a" font-weight="600">ŚWIAT</text>
+    <text x="140" y="115" font-family="Inter, sans-serif" font-size="10" fill="#1a1a1a" font-weight="600">KRAJ</text>
+    <text x="200" y="115" font-family="Inter, sans-serif" font-size="10" fill="#1a1a1a" font-weight="600">BIZNES</text>
+    <text x="270" y="115" font-family="Inter, sans-serif" font-size="10" fill="#1a1a1a" font-weight="600">TECH</text>
+    <text x="330" y="115" font-family="Inter, sans-serif" font-size="10" fill="#1a1a1a" font-weight="600">SPORT</text>
+    <line x1="0" y1="125" x2="400" y2="125" stroke="#e0e0e0"/>
+
+    <rect x="20" y="145" width="170" height="100" fill="#c8102e" opacity="0.5"/>
+    <text x="200" y="165" font-family="Georgia, serif" font-size="16" font-weight="900" fill="#1a1a1a">Czerwone akcenty</text>
+    <text x="200" y="185" font-family="serif" font-size="10" font-style="italic" fill="#666">elegancka międzynarodowa gazeta</text>
+    <line x1="200" y1="195" x2="290" y2="195" stroke="#c8102e" stroke-width="3"/>
+    <text x="200" y="215" font-family="Inter, sans-serif" font-size="8" font-weight="700" fill="#c8102e" letter-spacing="1.5">POLITYKA</text>
+
+    <rect x="20" y="260" width="120" height="3" fill="#c8102e"/>
+    <text x="80" y="280" font-family="Georgia, serif" font-size="9" font-weight="700" fill="#1a1a1a" text-anchor="middle">Karta z czerwoną kreską</text>
+
+    <rect x="150" y="260" width="120" height="3" fill="#1a1a1a"/>
+    <text x="210" y="280" font-family="Georgia, serif" font-size="9" font-weight="700" fill="#1a1a1a" text-anchor="middle">Drugi artykuł</text>
+
+    <rect x="280" y="260" width="105" height="3" fill="#c8102e"/>
+    <text x="332" y="280" font-family="Georgia, serif" font-size="9" font-weight="700" fill="#1a1a1a" text-anchor="middle">Trzeci tytuł</text>
+</svg>

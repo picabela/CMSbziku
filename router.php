@@ -34,6 +34,12 @@ if (preg_match('#^/tag/([a-z0-9-]+)/?$#', $uri, $m)) {
     return true;
 }
 
+if (preg_match('#^/strona/([a-z0-9-]+)/?$#', $uri, $m)) {
+    $_GET['slug'] = $m[1];
+    require __DIR__ . '/strona.php';
+    return true;
+}
+
 if ($uri === '/' || $uri === '/index.php') {
     require __DIR__ . '/index.php';
     return true;

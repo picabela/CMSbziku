@@ -5,12 +5,19 @@
             <h2 class="site-footer__title"><?= e(siteName()) ?></h2>
             <p><?= e(siteTagline()) ?></p>
             <ul class="site-footer__links">
-                <?php if (setting('contact_enabled', '1') === '1'): ?>
-                    <li><a href="<?= e(BASE_URL) ?>/kontakt">Kontakt</a></li>
+                <?php $footerMenu = getMenuItems('footer'); ?>
+                <?php if ($footerMenu): ?>
+                    <?php foreach (renderMenu('footer', false) as $mi): ?>
+                        <li><a href="<?= e($mi['url']) ?>"><?= e($mi['label']) ?></a></li>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <?php if (setting('contact_enabled', '1') === '1'): ?>
+                        <li><a href="<?= e(BASE_URL) ?>/kontakt">Kontakt</a></li>
+                    <?php endif; ?>
+                    <li><a href="<?= e(BASE_URL) ?>/sitemap.xml">Mapa strony</a></li>
+                    <li><a href="<?= e(BASE_URL) ?>/feed.php">RSS</a></li>
+                    <li><a href="<?= e(BASE_URL) ?>/admin/login.php">Panel redakcji</a></li>
                 <?php endif; ?>
-                <li><a href="<?= e(BASE_URL) ?>/sitemap.xml">Mapa strony</a></li>
-                <li><a href="<?= e(BASE_URL) ?>/feed.php">RSS</a></li>
-                <li><a href="<?= e(BASE_URL) ?>/admin/login.php">Panel redakcji</a></li>
             </ul>
         </div>
 

@@ -314,6 +314,97 @@ function tagSizeBucket(int $count, int $maxCount): int {
 }
 
 /**
+ * Strony statyczne (jak WordPress Pages).
+ */
+function getPageBySlug(string $slug): ?array {
+    $stmt = db()->prepare("SELECT * FROM pages WHERE slug = ? AND status = 'published'");
+    $stmt->execute([$slug]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function getPageById(int $id): ?array {
+    $stmt = db()->prepare('SELECT * FROM pages WHERE id = ?');
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function getAllPages(bool $publishedOnly = false): array {
+    $sql = 'SELECT * FROM pages';
+    if ($publishedOnly) $sql .= " WHERE status = 'published'";
+    $sql .= ' ORDER BY sort_order, title';
+    return db()->query($sql)->fetchAll();
+}
+
+function pageUrl(array $page): string {
+    return BASE_URL . '/strona/' . $page['slug'];
+}
+
+/**
+ * Menu: zwraca listę elementów (zdekodowane z JSON-a).
+ * $location: 'header' | 'footer'
+ */
+function getMenuItems(string $location): array {
+    $key = $location === 'footer' ? 'footer_menu_items' : 'header_menu_items';
+    $json = setting($key, '');
+    if (!$json) return [];
+    $items = json_decode($json, true);
+    return is_array($items) ? $items : [];
+}
+
+/**
+ * Resolves a menu item to a URL + label for rendering.
+ * Item shape: ['type' => 'home|category|tag|page|url', 'target' => ..., 'label' => optional override]
+ */
+function resolveMenuItem(array $item): ?array {
+    $type = $item['type'] ?? '';
+    $target = $item['target'] ?? '';
+    $labelOverride = trim((string)($item['label'] ?? ''));
+    switch ($type) {
+        case 'home':
+            return ['url' => BASE_URL . '/', 'label' => $labelOverride ?: 'Strona główna'];
+        case 'category':
+            return ['url' => categoryUrl($target), 'label' => $labelOverride ?: $target];
+        case 'tag':
+            $tag = getTagBySlug($target);
+            if (!$tag) return null;
+            return ['url' => tagUrl($tag['slug']), 'label' => $labelOverride ?: $tag['name']];
+        case 'page':
+            $page = getPageBySlug($target);
+            if (!$page) return null;
+            return ['url' => pageUrl($page), 'label' => $labelOverride ?: $page['title']];
+        case 'url':
+            if (!$target) return null;
+            return ['url' => $target, 'label' => $labelOverride ?: $target];
+    }
+    return null;
+}
+
+/**
+ * Renderuje menu z lokacji. Jeśli puste — fallback do auto-listy kategorii (kompatybilność).
+ */
+function renderMenu(string $location, bool $fallbackToCategories = true): array {
+    $items = getMenuItems($location);
+    $out = [];
+    if ($items) {
+        foreach ($items as $item) {
+            $r = resolveMenuItem($item);
+            if ($r) $out[] = $r;
+        }
+        return $out;
+    }
+    // Fallback: kategorie z licznikami (jak dotąd) — tylko dla header
+    if ($fallbackToCategories && $location === 'header') {
+        $out[] = ['url' => BASE_URL . '/', 'label' => 'Wszystkie'];
+        foreach (getCategories() as $cat) {
+            $out[] = ['url' => categoryUrl($cat['category']), 'label' => $cat['category']];
+        }
+    }
+    return $out;
+}
+
+/**
  * Zwraca slug aktywnego motywu (z fallbackiem do 'classic' jeśli nie istnieje).
  */
 function activeTheme(): string {
@@ -375,6 +466,47 @@ function readThemeManifest(string $slug): ?array {
         ? BASE_URL . '/themes/' . rawurlencode($slug) . '/screenshot.svg'
         : (is_file($dir . '/screenshot.png') ? BASE_URL . '/themes/' . rawurlencode($slug) . '/screenshot.png' : null);
     return $data;
+}
+
+/**
+ * Zwraca override-y kolorów dla danego motywu z ustawień (JSON).
+ */
+function themeColorOverrides(string $slug): array {
+    $json = setting('theme_color_overrides', '');
+    if (!$json) return [];
+    $all = json_decode($json, true);
+    return is_array($all) && is_array($all[$slug] ?? null) ? $all[$slug] : [];
+}
+
+function setThemeColorOverrides(string $slug, array $overrides): void {
+    $json = setting('theme_color_overrides', '');
+    $all = $json ? (json_decode($json, true) ?: []) : [];
+    if (!is_array($all)) $all = [];
+    // Sanityzacja: tylko hexy (#xxx, #xxxxxx, #xxxxxxxx)
+    $clean = [];
+    foreach ($overrides as $var => $val) {
+        if (!preg_match('/^--[a-z][a-z0-9-]*$/', $var)) continue;
+        if (preg_match('/^#[0-9a-fA-F]{3,8}$/', trim($val))) {
+            $clean[$var] = trim($val);
+        }
+    }
+    $all[$slug] = $clean;
+    setSetting('theme_color_overrides', json_encode($all, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+
+/**
+ * Generuje inline <style> z CSS variable overrides dla aktywnego motywu.
+ * Wstrzykiwane w <head> po theme CSS, by nadpisać :root.
+ */
+function renderThemeColorStyle(): string {
+    $slug = activeTheme();
+    $overrides = themeColorOverrides($slug);
+    if (!$overrides) return '';
+    $rules = [];
+    foreach ($overrides as $var => $val) {
+        $rules[] = $var . ': ' . $val . ';';
+    }
+    return '<style id="theme-colors">:root { ' . implode(' ', $rules) . ' }</style>';
 }
 
 /**

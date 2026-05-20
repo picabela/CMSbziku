@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (!$errors) {
-            $prefix = setting('contact_subject_prefix', '[The Daily Signal]');
+            $prefix = setting('contact_subject_prefix', '[bziku CMS]');
             $subject = trim($prefix . ' Wiadomość od ' . $values['name']);
             $body = "Imię: {$values['name']}\nE-mail: {$values['email']}\nIP: " . ($_SERVER['REMOTE_ADDR'] ?? '-') . "\nData: " . date('Y-m-d H:i:s') . "\n\n--- Wiadomość ---\n{$values['message']}\n";
 

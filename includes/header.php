@@ -16,7 +16,7 @@ $ogType = $ogType ?? 'website';
 <link rel="canonical" href="<?= e($canonical) ?>">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
 <meta name="author" content="<?= e(SITE_NAME) ?>">
-<meta name="generator" content="The Daily Signal CMS">
+<meta name="generator" content="bziku CMS">
 
 <meta property="og:site_name" content="<?= e(siteName()) ?>">
 <meta property="og:title" content="<?= e($pageTitle) ?>">
@@ -38,6 +38,7 @@ $ogType = $ogType ?? 'website';
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="<?= e(themeAssetUrl('style.css')) ?>">
+<?= renderThemeColorStyle() ?>
 <link rel="icon" type="image/svg+xml" href="<?= e(BASE_URL) ?>/assets/images/favicon.svg">
 
 <?php if (!empty($structuredData)): ?>
@@ -89,10 +90,9 @@ $ogType = $ogType ?? 'website';
         <span class="masthead__menu-bars" aria-hidden="true"></span>
         <span class="masthead__menu-label">Menu</span>
     </button>
-    <nav class="masthead__nav" id="primary-nav" aria-label="Kategorie">
-        <a href="<?= e(BASE_URL) ?>/">Wszystkie</a>
-        <?php foreach (getCategories() as $cat): ?>
-            <a href="<?= e(categoryUrl($cat['category'])) ?>"><?= e($cat['category']) ?></a>
+    <nav class="masthead__nav" id="primary-nav" aria-label="Menu główne">
+        <?php foreach (renderMenu('header') as $mi): ?>
+            <a href="<?= e($mi['url']) ?>"><?= e($mi['label']) ?></a>
         <?php endforeach; ?>
     </nav>
 </header>

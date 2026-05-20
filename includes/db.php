@@ -146,6 +146,21 @@ function initSchema(PDO $pdo): void {
         );
         CREATE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug);
 
+        CREATE TABLE IF NOT EXISTS pages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL DEFAULT '',
+            meta_title TEXT,
+            meta_description TEXT,
+            meta_keywords TEXT,
+            status TEXT DEFAULT 'published',
+            sort_order INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_pages_slug ON pages(slug);
+
         CREATE TABLE IF NOT EXISTS post_tags (
             post_id INTEGER NOT NULL,
             tag_id INTEGER NOT NULL,
@@ -204,7 +219,7 @@ function initSchema(PDO $pdo): void {
         // Kontakt
         'contact_enabled' => '1',
         'contact_email' => '',
-        'contact_subject_prefix' => '[The Daily Signal]',
+        'contact_subject_prefix' => '[bziku CMS]',
         // Tagi
         'auto_max_tags' => '3',
         'tag_label' => 'Tagi',
@@ -232,6 +247,11 @@ function initSchema(PDO $pdo): void {
         'facebook_pixel_id' => '',
         // Motyw
         'active_theme' => 'classic',
+        // Menu — JSON arrays of {type, target, label}
+        'header_menu_items' => '',
+        'footer_menu_items' => '',
+        // Per-theme color overrides — JSON {slug: {var: value}}
+        'theme_color_overrides' => '',
     ];
     $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach ($defaults as $k => $v) $stmt->execute([$k, $v]);

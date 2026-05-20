@@ -60,6 +60,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
         }
         header('Location: tags.php'); exit;
     }
+
+    if ($action === 'bulk_add') {
+        $lines = preg_split('/\r\n|\r|\n/', $_POST['bulk_input'] ?? '');
+        $added = 0; $skipped = 0;
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') continue;
+            $id = findOrCreateTag($line);
+            if ($id) $added++; else $skipped++;
+        }
+        refreshTagUsage();
+        $_SESSION['flash'] = ['type' => $added ? 'success' : 'error', 'msg' => "Dodano: {$added}, pominięto (duplikaty/błędy): {$skipped}."];
+        header('Location: tags.php'); exit;
+    }
 }
 
 refreshTagUsage();
@@ -99,6 +113,18 @@ $label = tagLabel();
             <button class="btn btn--primary" type="submit">Dodaj</button>
         </form>
     </section>
+
+    <details class="settings-card">
+        <summary><strong>+ Hurtowe dodawanie tagów</strong> <span class="muted">(jeden na wiersz)</span></summary>
+        <form method="post" class="settings-form" style="margin-top:1rem">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="action" value="bulk_add">
+            <label>Lista (jeden tag na wiersz)
+                <textarea name="bulk_input" rows="10" placeholder="Google&#10;Perplexity&#10;ChatGPT&#10;Anthropic&#10;# komentarze ignorowane"></textarea>
+            </label>
+            <button type="submit" class="btn btn--primary">Dodaj wszystkie</button>
+        </form>
+    </details>
 
     <?php if (empty($tags)): ?>
         <p class="empty">Brak tagów. AI dodaje je automatycznie przy każdym imporcie albo dodaj ręcznie powyżej.</p>

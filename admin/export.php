@@ -86,12 +86,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null) 
         'settings' => $settings,
     ];
 
-    $filename = 'daily-signal-export-' . date('Y-m-d-His') . '.json';
+    $filename = 'bziku-cms-export-' . date('Y-m-d-His') . '.json';
     header('Content-Type: application/json; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
     exit;
 }
+
+// Format eksportu — akceptujemy oba dla wstecznej kompatybilności
+const VALID_EXPORT_FORMATS = ['bziku-cms-export', 'daily-signal-export'];
 
 // ============================================================
 // IMPORT
@@ -99,12 +102,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null) 
 $importReport = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null) && ($_POST['action'] ?? '') === 'import') {
     if (empty($_FILES['file']['tmp_name']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-        $flash = ['type' => 'error', 'msg' => 'Brak pliku lub błąd uploadu.'];
+        $errCode = $_FILES['file']['error'] ?? 'brak';
+        $flash = ['type' => 'error', 'msg' => 'Brak pliku lub błąd uploadu (kod: ' . $errCode . ').'];
     } else {
         $json = file_get_contents($_FILES['file']['tmp_name']);
+        // Strip UTF-8 BOM jeśli obecny
+        $json = preg_replace('/^\xEF\xBB\xBF/', '', $json);
+        $size = strlen($json);
         $data = json_decode($json, true);
-        if (!is_array($data) || ($data['format'] ?? '') !== 'daily-signal-export') {
-            $flash = ['type' => 'error', 'msg' => 'Nieprawidłowy format pliku.'];
+        if (!is_array($data)) {
+            $err = json_last_error_msg();
+            $preview = mb_substr(trim($json), 0, 100);
+            $flash = ['type' => 'error', 'msg' => "Nieprawidłowy JSON ({$size} B): {$err}. Podgląd: " . ($preview ?: '(pusty)')];
+        } elseif (!in_array($data['format'] ?? '', VALID_EXPORT_FORMATS, true)) {
+            $got = $data['format'] ?? '(brak pola format)';
+            $flash = ['type' => 'error', 'msg' => "JSON OK, ale nie jest exportem CMS-a. Pole format=\"{$got}\", oczekiwane: " . implode(' | ', VALID_EXPORT_FORMATS)];
         } else {
             $report = ['posts_added' => 0, 'posts_skipped' => 0, 'auto_imports_added' => 0, 'sources_added' => 0, 'categories_added' => 0, 'tags_added' => 0, 'settings_updated' => 0];
             $replaceSettings = isset($_POST['replace_settings']);

@@ -1,4 +1,4 @@
-# The Daily Signal — friendly URLs and security
+# bziku CMS — friendly URLs and security
 Options -Indexes
 DirectoryIndex index.php index.html
 
@@ -22,6 +22,12 @@ DirectoryIndex index.php index.html
 
     # Category pages: /kategoria/seo  -> index.php?kategoria=seo
     RewriteRule ^kategoria/([a-z0-9-]+)/?$ index.php?kategoria=$1 [QSA,L]
+
+    # Tag pages: /tag/google -> tag.php?tag=google
+    RewriteRule ^tag/([a-z0-9-]+)/?$ tag.php?tag=$1 [QSA,L]
+
+    # Static pages: /strona/o-nas -> strona.php?slug=o-nas
+    RewriteRule ^strona/([a-z0-9-]+)/?$ strona.php?slug=$1 [QSA,L]
 
     # Skip real files & directories
     RewriteCond %{REQUEST_FILENAME} -f [OR]

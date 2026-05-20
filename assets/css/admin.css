@@ -362,8 +362,16 @@ body {
     border: 1px solid var(--rule);
     padding: 1.75rem 2rem;
     margin-bottom: 1.5rem;
-    max-width: 720px;
+    max-width: 900px;
     box-shadow: 0 1px 0 var(--rule-soft);
+}
+.settings-card form { display: block; }
+/* Każde <label> zajmuje pełną szerokość — żeby pola się nie ściskały obok siebie */
+.settings-card label,
+.settings-card .editor-form label {
+    display: block;
+    width: 100%;
+    clear: both;
 }
 .settings-card h2 {
     margin: 0 0 1.25rem;
@@ -408,11 +416,24 @@ body {
     border-color: var(--ink);
     box-shadow: 0 0 0 3px rgba(17,17,17,0.08);
 }
-.settings-form textarea { resize: vertical; line-height: 1.5; }
-.settings-form textarea[name*="code"] {
+.settings-form textarea {
+    resize: vertical;
+    line-height: 1.5;
+    min-height: 90px;
+}
+.settings-form textarea[name*="code"],
+.settings-form textarea[name*="prompt"] {
     font-family: 'SF Mono', Menlo, monospace;
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     background: #fafaf6;
+    min-height: 220px;
+}
+/* "Prompt redakcyjny" — zawsze wysokie pole */
+.editor-form textarea[name="auto_prompt"],
+.settings-form textarea[name="auto_prompt"] {
+    min-height: 320px;
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 0.88rem;
 }
 .settings-card--wide { max-width: 920px; }
 
@@ -707,6 +728,56 @@ body {
 }
 
 .theme-spec-details > summary { cursor: pointer; padding: 0.5rem 0; font-size: 0.95rem; }
+.theme-colors-block {
+    background: #fff;
+    border: 1px solid var(--rule);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+}
+.theme-colors-block > summary {
+    cursor: pointer;
+    font-size: 0.95rem;
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.theme-colors-block .muted { color: var(--muted); font-size: 0.85rem; }
+.theme-colors-form { margin-top: 1.25rem; }
+.theme-colors-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.theme-color-field { display: block; font-size: 0.85rem; }
+.theme-color-field > span:first-child {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--ink);
+    text-transform: none;
+    letter-spacing: normal;
+}
+.theme-color-field code { background: var(--bg); padding: 0.05rem 0.3rem; font-size: 0.78rem; color: var(--muted); font-weight: 400; }
+.theme-color-input { display: flex; gap: 0.5rem; align-items: stretch; }
+.theme-color-input input[type=color] {
+    width: 50px;
+    height: 40px;
+    border: 1px solid var(--rule);
+    padding: 0;
+    cursor: pointer;
+    background: #fff;
+}
+.theme-color-input input[type=text] {
+    flex: 1;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--rule);
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 0.9rem;
+}
+.theme-color-field small { display: block; margin-top: 0.3rem; color: var(--muted); font-size: 0.78rem; }
+.theme-colors-actions { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; padding-top: 0.5rem; border-top: 1px solid var(--rule-soft); }
 .theme-spec-prompt {
     background: #15140f;
     color: #d8d6d0;
@@ -722,6 +793,22 @@ body {
     border-radius: 4px;
 }
 .admin-page__sub { color: var(--muted); margin: 0.25rem 0 0; font-size: 0.9rem; }
+
+/* Menu editor */
+.menu-items input, .menu-items select {
+    width: 100%;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--rule);
+    font-family: inherit;
+    font-size: 0.9rem;
+    background: #fff;
+}
+.menu-items td { vertical-align: middle; padding: 0.5rem; }
+.menu-row__handle { color: var(--muted); font-family: 'SF Mono', Menlo, monospace; text-align: center; }
+.menu-row__remove { font-size: 1.4rem; font-weight: 700; line-height: 1; padding: 0 0.4rem; }
+.menu-actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; align-items: center; flex-wrap: wrap; }
+.menu-help__list { font-size: 0.92rem; line-height: 1.8; padding-left: 1.25rem; }
+.menu-help__list code { background: var(--bg); padding: 0.1rem 0.4rem; }
 
 .bulk-result {
     background: #fff;

@@ -145,7 +145,7 @@ $logoFile = setting('site_logo');
                 <input type="email" name="contact_email" value="<?= e(setting('contact_email', '')) ?>" placeholder="redakcja@twojadomena.pl">
             </label>
             <label>Prefix tematu wiadomości
-                <input type="text" name="contact_subject_prefix" value="<?= e(setting('contact_subject_prefix', '[The Daily Signal]')) ?>">
+                <input type="text" name="contact_subject_prefix" value="<?= e(setting('contact_subject_prefix', '[bziku CMS]')) ?>">
             </label>
             <p class="hint">Wiadomości wysyłane są przez PHP <code>mail()</code>. Spam-protection: honeypot + prosta kalkulacja + rate limit 1 wiadomość / 60 s z IP.</p>
             <button class="btn btn--primary" type="submit">Zapisz kontakt</button>

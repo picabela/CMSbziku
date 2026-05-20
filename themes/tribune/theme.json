@@ -1,0 +1,19 @@
+{
+    "name": "Tribune",
+    "slug": "tribune",
+    "version": "1.0.0",
+    "author": "bziku CMS",
+    "description": "Vintage gazeta sepia. Ciepły, papierowy klimat lat 50. Stare typografie, ozdobne ramki, brąz i kremowe odcienie. Idealne do magazynów historycznych i kulturalnych.",
+    "tags": ["vintage", "sepia", "warm", "retro", "magazine"],
+    "supports": ["dark-mode", "responsive", "hamburger-menu", "tag-cloud", "drop-cap"],
+    "preview_color": "#8b5a2b",
+    "screenshot": "screenshot.svg",
+    "fonts": ["Lora", "DM Serif Display", "Inter"],
+    "customizable_colors": [
+        {"var": "--ink", "label": "Tekst główny", "default": "#3a2818"},
+        {"var": "--paper", "label": "Tło papieru", "default": "#f4e8d0"},
+        {"var": "--paper-bright", "label": "Tło treści", "default": "#faf2dd"},
+        {"var": "--accent", "label": "Akcent brąz", "default": "#8b5a2b"},
+        {"var": "--muted", "label": "Tekst poboczny", "default": "#7a604a"}
+    ]
+}

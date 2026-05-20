@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">
+    <rect width="400" height="300" fill="#f4ede0"/>
+    <line x1="0" y1="35" x2="400" y2="35" stroke="#1a1410" stroke-width="3"/>
+    <line x1="0" y1="40" x2="400" y2="40" stroke="#1a1410" stroke-width="1"/>
+    <text x="200" y="75" font-family="Georgia, serif" font-size="28" font-weight="700" fill="#1a1410" text-anchor="middle">BROADSHEET</text>
+    <text x="200" y="92" font-family="serif" font-size="10" font-style="italic" fill="#6e5b46" text-anchor="middle">Daily Newspaper of Record</text>
+    <line x1="0" y1="105" x2="400" y2="105" stroke="#c8b89c"/>
+    <text x="80" y="122" font-family="Georgia, serif" font-size="10" font-style="italic" fill="#1a1410">POLITYKA</text>
+    <text x="160" y="122" font-family="Georgia, serif" font-size="10" font-style="italic" fill="#1a1410">BIZNES</text>
+    <text x="240" y="122" font-family="Georgia, serif" font-size="10" font-style="italic" fill="#1a1410">KULTURA</text>
+    <text x="320" y="122" font-family="Georgia, serif" font-size="10" font-style="italic" fill="#1a1410">SPORT</text>
+    <line x1="0" y1="135" x2="400" y2="135" stroke="#1a1410"/>
+
+    <rect x="20" y="155" width="160" height="100" fill="#7a1f1f" opacity="0.7"/>
+    <text x="200" y="175" font-family="Georgia, serif" font-size="16" font-weight="700" fill="#1a1410">TRZY KOLUMNY</text>
+    <text x="200" y="195" font-family="Georgia, serif" font-size="9" font-style="italic" fill="#6e5b46">elegancki klasyczny</text>
+    <line x1="200" y1="205" x2="280" y2="205" stroke="#7a1f1f" stroke-width="2"/>
+    <text x="200" y="225" font-family="serif" font-size="7" fill="#1a1410">Tekst justowany z drop cap...</text>
+    <text x="200" y="237" font-family="serif" font-size="7" fill="#1a1410">w wielu kolumnach jak prasa</text>
+    <text x="200" y="249" font-family="serif" font-size="7" fill="#1a1410">wysokiej kultury.</text>
+
+    <line x1="0" y1="270" x2="400" y2="270" stroke="#1a1410" stroke-width="3"/>
+    <line x1="0" y1="275" x2="400" y2="275" stroke="#1a1410"/>
+    <text x="200" y="293" font-family="Georgia, serif" font-size="9" font-style="italic" fill="#6e5b46" text-anchor="middle">Stopka serwisu · 2026</text>
+</svg>

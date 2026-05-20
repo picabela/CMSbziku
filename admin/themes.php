@@ -10,6 +10,32 @@ $themesDir = realpath(__DIR__ . '/../themes');
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null)) {
     $action = $_POST['action'] ?? '';
 
+    // Zapis kolorów motywu
+    if ($action === 'save_colors') {
+        $slug = trim($_POST['slug'] ?? '');
+        $colors = is_array($_POST['color'] ?? null) ? $_POST['color'] : [];
+        $manifest = readThemeManifest($slug);
+        if ($manifest) {
+            $allowedVars = array_column($manifest['customizable_colors'] ?? [], 'var');
+            $filtered = [];
+            foreach ($colors as $var => $val) {
+                if (in_array($var, $allowedVars, true) && trim($val) !== '') {
+                    $filtered[$var] = $val;
+                }
+            }
+            setThemeColorOverrides($slug, $filtered);
+            $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Kolory zaktualizowane dla motywu: ' . $manifest['name']];
+        }
+        header('Location: themes.php#colors-' . urlencode($slug)); exit;
+    }
+
+    if ($action === 'reset_colors') {
+        $slug = trim($_POST['slug'] ?? '');
+        setThemeColorOverrides($slug, []);
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Przywrócono domyślne kolory.'];
+        header('Location: themes.php#colors-' . urlencode($slug)); exit;
+    }
+
     // Aktywacja motywu
     if ($action === 'activate') {
         $slug = trim($_POST['slug'] ?? '');
@@ -234,6 +260,50 @@ $active = setting('active_theme', 'classic');
         <?php endforeach; ?>
     </section>
 
+    <?php
+    $themesWithColors = array_filter($themes, fn($t) => !empty($t['customizable_colors']));
+    if ($themesWithColors): ?>
+    <section class="settings-card settings-card--wide">
+        <h2>🎨 Kolory motywów</h2>
+        <p class="hint">Dostosuj paletę dla każdego motywu. Zmiany dotyczą tylko aktywnego motywu — pozostałe motywy zachowają swoje override-y.</p>
+
+        <?php foreach ($themesWithColors as $t): ?>
+            <?php $overrides = themeColorOverrides($t['slug']); ?>
+            <details class="theme-colors-block" id="colors-<?= e($t['slug']) ?>" <?= $t['slug'] === $active ? 'open' : '' ?>>
+                <summary>
+                    <strong><?= e($t['name']) ?></strong>
+                    <?php if ($t['slug'] === $active): ?><span class="theme-card__badge">Aktywny</span><?php endif; ?>
+                    <?php if ($overrides): ?><span class="muted">(zmodyfikowane: <?= count($overrides) ?>)</span><?php endif; ?>
+                </summary>
+                <form method="post" class="theme-colors-form">
+                    <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+                    <input type="hidden" name="action" value="save_colors">
+                    <input type="hidden" name="slug" value="<?= e($t['slug']) ?>">
+
+                    <div class="theme-colors-grid">
+                        <?php foreach ($t['customizable_colors'] as $c):
+                            $current = $overrides[$c['var']] ?? $c['default']; ?>
+                            <label class="theme-color-field">
+                                <span><?= e($c['label']) ?> <code><?= e($c['var']) ?></code></span>
+                                <span class="theme-color-input">
+                                    <input type="color" value="<?= e(substr($current, 0, 7)) ?>" oninput="this.nextElementSibling.value = this.value">
+                                    <input type="text" name="color[<?= e($c['var']) ?>]" value="<?= e($current) ?>" pattern="#[0-9a-fA-F]{3,8}" placeholder="<?= e($c['default']) ?>">
+                                </span>
+                                <small>Domyślnie: <code><?= e($c['default']) ?></code></small>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div class="theme-colors-actions">
+                        <button type="submit" class="btn btn--primary">Zapisz kolory</button>
+                        <button type="submit" name="action" value="reset_colors" formnovalidate class="link-btn link-btn--danger" onclick="return confirm('Przywrócić domyślne kolory tego motywu?')">Przywróć domyślne</button>
+                    </div>
+                </form>
+            </details>
+        <?php endforeach; ?>
+    </section>
+    <?php endif; ?>
+
     <section class="settings-card">
         <h2>Wgraj nowy motyw (.zip)</h2>
         <form method="post" enctype="multipart/form-data" class="settings-form">
@@ -275,7 +345,7 @@ $active = setting('active_theme', 'classic');
 <?php
 function themeAiPrompt(): string {
     return <<<'PROMPT'
-# Zadanie: Stwórz motyw dla CMS "The Daily Signal"
+# Zadanie: Stwórz motyw dla CMS "bziku CMS"
 
 Stwórz kompletny motyw graficzny w formacie .zip, zgodny z poniższą specyfikacją. Motyw NIE modyfikuje HTML-a ani logiki PHP — tylko warstwę wizualną przez CSS.
 
