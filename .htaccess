@@ -17,6 +17,9 @@ DirectoryIndex index.php index.html
     # sitemap.xml -> sitemap.php
     RewriteRule ^sitemap\.xml$ sitemap.php [L]
 
+    # /kontakt -> kontakt.php
+    RewriteRule ^kontakt/?$ kontakt.php [L]
+
     # Category pages: /kategoria/seo  -> index.php?kategoria=seo
     RewriteRule ^kategoria/([a-z0-9-]+)/?$ index.php?kategoria=$1 [QSA,L]
 

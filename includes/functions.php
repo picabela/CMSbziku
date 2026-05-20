@@ -166,3 +166,18 @@ function bulkIds($raw): array {
 function allCategories(): array {
     return db()->query('SELECT * FROM categories ORDER BY sort_order, name')->fetchAll();
 }
+
+function siteName(): string {
+    $v = trim((string)setting('site_name', ''));
+    return $v !== '' ? $v : SITE_NAME;
+}
+
+function siteTagline(): string {
+    $v = trim((string)setting('site_tagline', ''));
+    return $v !== '' ? $v : SITE_TAGLINE;
+}
+
+function siteLogoUrl(): ?string {
+    $v = trim((string)setting('site_logo', ''));
+    return $v !== '' ? UPLOAD_URL . '/' . $v : null;
+}

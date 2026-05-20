@@ -37,6 +37,10 @@ class AutoImporter {
     private int $failed = 0;
     private int $enqueued = 0;
 
+    public bool $verbose = false;
+    public array $itemsTrace = [];
+    private array $currentTrace = [];
+
     public function __construct() {
         $this->pdo = db();
     }
@@ -45,7 +49,8 @@ class AutoImporter {
      * @param int|null $maxPostsOverride  Wymuszony limit (ignoruje auto_enabled).
      * @param bool $force  Pomija sprawdzanie auto_enabled (przycisk "Uruchom teraz").
      */
-    public function run(?int $maxPostsOverride = null, bool $force = false): array {
+    public function run(?int $maxPostsOverride = null, bool $force = false, bool $verbose = false): array {
+        $this->verbose = $verbose;
         $perTick = $maxPostsOverride ?? (int)setting('auto_posts_per_tick', '2');
         $this->startRun();
 
@@ -117,6 +122,16 @@ class AutoImporter {
             ? $this->fetchListing($source)
             : $this->fetchFeed($source['feed_url']);
 
+        // Sortuj świeże na górę (te z parsowalną datą najpierw, NULL na koniec).
+        usort($items, function($a, $b) {
+            $ta = !empty($a['published']) ? (int)@strtotime($a['published']) : 0;
+            $tb = !empty($b['published']) ? (int)@strtotime($b['published']) : 0;
+            if ($ta === $tb) return 0;
+            if ($ta === 0) return 1;
+            if ($tb === 0) return -1;
+            return $tb <=> $ta;
+        });
+
         $this->found += count($items);
         $this->logLine('  Znaleziono ' . count($items) . ' kandydatów w źródle.');
 
@@ -175,11 +190,12 @@ class AutoImporter {
     private function processQueue(int $maxPerTick): void {
         $this->logLine("━━ FAZA B: Processing (max {$maxPerTick} na ten tick) ━━");
 
+        // Najświeższe publikacje najpierw. NULL idą na koniec żeby nie blokować świeżych.
         $rows = $this->pdo->prepare("
             SELECT * FROM auto_queue
             WHERE status = 'pending'
               AND (next_attempt_at IS NULL OR next_attempt_at <= datetime('now'))
-            ORDER BY id ASC
+            ORDER BY (published_ts IS NULL) ASC, published_ts DESC, id ASC
             LIMIT ?
         ");
         $rows->bindValue(1, $maxPerTick, PDO::PARAM_INT);
@@ -205,6 +221,8 @@ class AutoImporter {
     }
 
     private function processQueueItem(array $row): void {
+        $this->currentTrace = ['queue_id' => (int)$row['id'], 'external_url' => $row['external_url'], 'steps' => []];
+
         $sourceStmt = $this->pdo->prepare('SELECT * FROM sources WHERE id = ?');
         $sourceStmt->execute([$row['source_id']]);
         $source = $sourceStmt->fetch();
@@ -218,32 +236,72 @@ class AutoImporter {
         $maxAgeDays = !empty($source['max_age_days']) ? (int)$source['max_age_days'] : $globalMaxAge;
         $cutoff = time() - ($maxAgeDays * 86400);
 
+        $this->trace('1_source_config', [
+            'id' => (int)$source['id'],
+            'name' => $source['name'],
+            'type' => $source['source_type'],
+            'feed_url' => $source['feed_url'],
+            'link_selector' => $source['link_selector'] ?: '(heurystyka)',
+            'category_hint' => $source['category'],
+            'max_age_days_used' => $maxAgeDays,
+            'cutoff_date' => date('Y-m-d H:i:s', $cutoff),
+            'rss_published_ts' => $row['published_ts'] ? date('Y-m-d H:i:s', (int)$row['published_ts']) : null,
+        ]);
+
         $title = $row['title'] ?: $row['external_url'];
         $this->logLine('  · Przetwarzam #' . $row['id'] . ': ' . mb_substr($title, 0, 70));
 
         try {
+            $tStart = microtime(true);
             $html = $this->httpGet($row['external_url'], 20);
-            $htmlTs = $this->extractDateFromHtml($html);
+            $this->trace('2_article_fetch', [
+                'url' => $row['external_url'],
+                'response_bytes' => strlen($html),
+                'elapsed_ms' => (int)((microtime(true) - $tStart) * 1000),
+            ]);
+
+            $dateAttempts = [];
+            $htmlTs = $this->extractDateFromHtml($html, $dateAttempts);
             $effectiveTs = $row['published_ts'] ? (int)$row['published_ts'] : $htmlTs;
+            $this->trace('3_date_extraction', [
+                'attempts' => $dateAttempts,
+                'rss_ts' => $row['published_ts'] ? date('c', (int)$row['published_ts']) : null,
+                'html_ts' => $htmlTs ? date('c', $htmlTs) : null,
+                'effective_ts' => $effectiveTs ? date('c', $effectiveTs) : null,
+                'source_used' => $row['published_ts'] ? 'RSS pubDate' : ($htmlTs ? 'HTML' : 'brak'),
+            ]);
 
             if ($effectiveTs === null) {
                 $this->markQueueSkipped((int)$row['id'], 'Brak wykrytej daty publikacji.');
                 $this->skipped++;
                 $this->logLine('    ⊘ Brak daty — pomijam.');
+                $this->trace('result', ['status' => 'skipped', 'reason' => 'no_date']);
+                $this->finalizeItemTrace($title);
                 return;
             }
             if ($effectiveTs < $cutoff) {
                 $this->markQueueSkipped((int)$row['id'], 'Artykuł starszy niż ' . $maxAgeDays . ' dni (' . date('Y-m-d', $effectiveTs) . ').');
                 $this->skipped++;
                 $this->logLine('    ⏰ Za stary (' . date('Y-m-d', $effectiveTs) . ') — pomijam.');
+                $this->trace('result', ['status' => 'skipped', 'reason' => 'too_old', 'date' => date('Y-m-d', $effectiveTs)]);
+                $this->finalizeItemTrace($title);
                 return;
             }
 
             $content = $this->extractMainText($html);
-            if (mb_strlen($content) < 400) $content = trim(strip_tags($row['description'] ?? ''));
+            $contentSource = 'html_article';
+            if (mb_strlen($content) < 400) {
+                $content = trim(strip_tags($row['description'] ?? ''));
+                $contentSource = 'rss_description_fallback';
+            }
             if (mb_strlen($content) < 200) {
                 throw new RuntimeException('Za mało treści do streszczenia (' . mb_strlen($content) . ' znaków).');
             }
+            $this->trace('4_content_extraction', [
+                'source' => $contentSource,
+                'length_chars' => mb_strlen($content),
+                'preview' => mb_substr($content, 0, 600) . (mb_strlen($content) > 600 ? '…' : ''),
+            ]);
 
             $item = [
                 'title' => $row['title'] ?: ($this->extractTitleFromHtml($html) ?: $row['external_url']),
@@ -259,6 +317,15 @@ class AutoImporter {
             $this->markImported($row['guid_hash'], (int)$source['id'], $item, $postId);
             $this->imported++;
             $this->logLine("    ✓ Post #{$postId}: " . $generated['title']);
+
+            $this->trace('7_post_saved', [
+                'post_id' => $postId,
+                'title' => $generated['title'],
+                'category' => $generated['category'] ?? null,
+                'slug' => slugify($generated['title']),
+            ]);
+            $this->trace('result', ['status' => 'imported', 'post_id' => $postId]);
+            $this->finalizeItemTrace($generated['title']);
         } catch (Throwable $e) {
             $this->failed++;
             $attempts = (int)$row['attempts'] + 1;
@@ -266,14 +333,29 @@ class AutoImporter {
             if ($attempts >= $maxAttempts) {
                 $this->markQueueFailed((int)$row['id'], $e->getMessage());
                 $this->logLine("    ✗ FAILED po {$attempts} próbach: " . $e->getMessage());
+                $this->trace('result', ['status' => 'failed', 'error' => $e->getMessage(), 'attempts' => $attempts]);
             } else {
                 $backoff = [5, 30, 120][$attempts - 1] ?? 120;
                 $nextAttempt = date('Y-m-d H:i:s', time() + $backoff * 60);
                 $this->pdo->prepare("UPDATE auto_queue SET status='pending', attempts=?, next_attempt_at=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
                     ->execute([$attempts, $nextAttempt, $e->getMessage(), $row['id']]);
                 $this->logLine("    ↻ Retry #{$attempts}/{$maxAttempts} za {$backoff} min: " . $e->getMessage());
+                $this->trace('result', ['status' => 'retry', 'error' => $e->getMessage(), 'attempts' => $attempts, 'next_attempt' => $nextAttempt]);
             }
+            $this->finalizeItemTrace($row['title'] ?: $row['external_url']);
         }
+    }
+
+    private function trace(string $key, $value): void {
+        if (!$this->verbose) return;
+        $this->currentTrace['steps'][$key] = $value;
+    }
+
+    private function finalizeItemTrace(string $title): void {
+        if (!$this->verbose) return;
+        $this->currentTrace['title'] = $title;
+        $this->itemsTrace[] = $this->currentTrace;
+        $this->currentTrace = [];
     }
 
     private function markQueueDone(int $id, int $postId): void {
@@ -341,15 +423,20 @@ class AutoImporter {
         return $items;
     }
 
-    private function extractDateFromHtml(string $html): ?int {
+    private function extractDateFromHtml(string $html, ?array &$attempts = null): ?int {
+        $attempts = $attempts ?? [];
         // 1) <meta property="article:published_time" ...>
         if (preg_match('#<meta[^>]+property=["\']article:(?:published_time|modified_time)["\'][^>]+content=["\']([^"\']+)["\']#i', $html, $m)) {
-            $t = strtotime($m[1]); if ($t) return $t;
+            $t = strtotime($m[1]);
+            $attempts[] = ['signal' => 'meta article:published_time', 'value' => $m[1], 'parsed' => $t ? date('c', $t) : null];
+            if ($t) return $t;
         }
         // 2) <meta name="..." content="ISO">
         foreach (['datePublished','dateModified','pubdate','date','article:published','article:modified'] as $attr) {
             if (preg_match('#<meta[^>]+(?:name|itemprop|property)=["\']' . preg_quote($attr, '#') . '["\'][^>]+content=["\']([^"\']+)["\']#i', $html, $m)) {
-                $t = strtotime($m[1]); if ($t) return $t;
+                $t = strtotime($m[1]);
+                $attempts[] = ['signal' => "meta {$attr}", 'value' => $m[1], 'parsed' => $t ? date('c', $t) : null];
+                if ($t) return $t;
             }
         }
         // 3) JSON-LD (NewsArticle / Article / BlogPosting)
@@ -358,13 +445,19 @@ class AutoImporter {
                 $data = json_decode($json, true);
                 if (!is_array($data)) continue;
                 $found = $this->jsonLdDate($data);
-                if ($found) return $found;
+                if ($found) {
+                    $attempts[] = ['signal' => 'JSON-LD datePublished', 'parsed' => date('c', $found)];
+                    return $found;
+                }
             }
         }
         // 4) <time datetime="...">
         if (preg_match('#<time[^>]+datetime=["\']([^"\']+)["\']#i', $html, $m)) {
-            $t = strtotime($m[1]); if ($t) return $t;
+            $t = strtotime($m[1]);
+            $attempts[] = ['signal' => 'time datetime', 'value' => $m[1], 'parsed' => $t ? date('c', $t) : null];
+            if ($t) return $t;
         }
+        $attempts[] = ['signal' => '— nic nie znaleziono —'];
         return null;
     }
 
@@ -537,6 +630,15 @@ class AutoImporter {
             ],
         ];
 
+        $this->trace('5_openai_request', [
+            'endpoint' => 'https://api.openai.com/v1/chat/completions',
+            'model' => $model,
+            'temperature' => $temp,
+            'system_prompt' => $systemPrompt,
+            'user_prompt' => $user,
+            'available_categories' => $catNames,
+        ]);
+
         $ch = curl_init('https://api.openai.com/v1/chat/completions');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -566,8 +668,19 @@ class AutoImporter {
             if (empty($parsed[$req])) throw new RuntimeException("OpenAI: brak pola '{$req}'.");
         }
 
+        $rawCategory = $parsed['category'] ?? '';
         // Normalizuj kategorię — model musi się zmieścić w istniejącej liście.
-        $parsed['category'] = $this->normalizeCategory($parsed['category'] ?? '', $source, $catNames);
+        $parsed['category'] = $this->normalizeCategory($rawCategory, $source, $catNames);
+
+        $this->trace('6_openai_response', [
+            'http_status' => $code,
+            'raw_json' => $content,
+            'parsed' => $parsed,
+            'category_raw' => $rawCategory,
+            'category_normalized' => $parsed['category'],
+            'usage' => $data['usage'] ?? null,
+        ]);
+
         return $parsed;
     }
 
@@ -605,9 +718,8 @@ class AutoImporter {
         $author = setting('auto_default_author', 'Redakcja AI');
 
         $sourceAttribution = sprintf(
-            '<hr><p class="source-attribution"><small>Opracowanie redakcji na podstawie: <a href="%s" rel="nofollow noopener" target="_blank">%s</a> (%s).</small></p>',
+            '<hr><p class="source-attribution"><small>Opracowanie redakcji na podstawie źródła: %s (%s).</small></p>',
             e($item['url']),
-            e($item['title']),
             e($source['name'])
         );
         $content .= $sourceAttribution;
@@ -704,18 +816,19 @@ class AutoImporter {
             'skipped' => $this->skipped,
             'failed' => $this->failed,
             'log' => $this->log,
+            'items_trace' => $this->itemsTrace,
         ];
     }
 }
 
-function runAutoImport(?int $maxPosts = null, bool $force = false): array {
+function runAutoImport(?int $maxPosts = null, bool $force = false, bool $verbose = false): array {
     $lockFile = sys_get_temp_dir() . '/daily-signal-auto-' . md5(__DIR__) . '.lock';
     $fh = fopen($lockFile, 'c+');
     if (!$fh || !flock($fh, LOCK_EX | LOCK_NB)) {
         return ['error' => 'Inny run jest już aktywny.'];
     }
     try {
-        return (new AutoImporter())->run($maxPosts, $force);
+        return (new AutoImporter())->run($maxPosts, $force, $verbose);
     } finally {
         flock($fh, LOCK_UN);
         fclose($fh);

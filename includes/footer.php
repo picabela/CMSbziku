@@ -2,8 +2,8 @@
 <footer class="site-footer" role="contentinfo">
     <div class="site-footer__inner">
         <div class="site-footer__col">
-            <h2 class="site-footer__title"><?= e(SITE_NAME) ?></h2>
-            <p><?= e(SITE_TAGLINE) ?></p>
+            <h2 class="site-footer__title"><?= e(siteName()) ?></h2>
+            <p><?= e(siteTagline()) ?></p>
         </div>
         <div class="site-footer__col">
             <h3>Kategorie</h3>
@@ -16,13 +16,16 @@
         <div class="site-footer__col">
             <h3>Linki</h3>
             <ul>
+                <?php if (setting('contact_enabled', '1') === '1'): ?>
+                    <li><a href="<?= e(BASE_URL) ?>/kontakt">Kontakt</a></li>
+                <?php endif; ?>
                 <li><a href="<?= e(BASE_URL) ?>/sitemap.xml">Mapa strony</a></li>
                 <li><a href="<?= e(BASE_URL) ?>/feed.php">RSS</a></li>
                 <li><a href="<?= e(BASE_URL) ?>/admin/login.php">Panel redakcji</a></li>
             </ul>
         </div>
     </div>
-    <p class="site-footer__copy">&copy; <?= date('Y') ?> <?= e(SITE_NAME) ?>. Wszystkie prawa zastrzeżone.</p>
+    <p class="site-footer__copy">&copy; <?= date('Y') ?> <?= e(siteName()) ?>. Wszystkie prawa zastrzeżone.</p>
 </footer>
 </body>
 </html>

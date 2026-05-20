@@ -174,6 +174,17 @@ function initSchema(PDO $pdo): void {
         'auto_default_author' => 'Redakcja AI',
         'auto_prompt' => "Jesteś dziennikarzem branżowym piszącym po polsku dla minimalistycznej gazety online o SEO, GEO, reklamie cyfrowej (ADS) i AI.\n\nNa podstawie poniższego artykułu źródłowego napisz oryginalne, ciekawe streszczenie po polsku — w formie samodzielnego newsa redakcyjnego, nie kopiując zdań ze źródła. Tekst powinien:\n- mieć ok. 300–500 słów,\n- być zwięzły, informacyjny i konkretny,\n- używać prostego języka, krótkich akapitów <p>,\n- zawierać 1-2 śródtytuły <h2> oraz listę <ul> jeśli to naturalne,\n- nie zaczynać od „W artykule…\", „Według…\" — pisz wprost,\n- na końcu dodać akapit „Dlaczego to ważne\" w 2-3 zdaniach.\n\nZwróć WYŁĄCZNIE poprawny JSON o strukturze:\n{\n  \"title\": \"chwytliwy tytuł po polsku, max 80 znaków\",\n  \"subtitle\": \"krótki podtytuł po polsku, max 140 znaków\",\n  \"excerpt\": \"zajawka 1-2 zdania po polsku, max 220 znaków\",\n  \"content\": \"treść w prostym HTML (<p>, <h2>, <ul>, <li>, <strong>, <em>, <blockquote>)\",\n  \"category\": \"jedna z: SEO, GEO, ADS, AI, Aktualności\",\n  \"keywords\": \"5-7 słów kluczowych po polsku, przecinki\",\n  \"image_alt\": \"opis sugerowanego obrazu po polsku, max 120 znaków\"\n}",
         'auto_last_run' => '',
+        // Tożsamość strony — edytowalne z panelu (nadpisują stałe z config.php)
+        'site_name' => '',
+        'site_tagline' => '',
+        'site_logo' => '',
+        // Top notice (czytelnie wymyślony przekaz)
+        'top_notice_enabled' => '1',
+        'top_notice_text' => 'Same fakty, bez lania wody. Czytaj wygodnie na ebooku, tablecie lub w przerwie na kawę.',
+        // Kontakt
+        'contact_enabled' => '1',
+        'contact_email' => '',
+        'contact_subject_prefix' => '[The Daily Signal]',
     ];
     $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach ($defaults as $k => $v) $stmt->execute([$k, $v]);

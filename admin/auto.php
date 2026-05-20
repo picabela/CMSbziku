@@ -33,8 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
         $max = (int)($_POST['max'] ?? 2);
         $mode = $_POST['mode'] ?? 'bg';
 
-        if ($mode === 'sync') {
-            $lastResult = runAutoImport($max, true);
+        if ($mode === 'sync' || $mode === 'debug') {
+            $lastResult = runAutoImport($max, true, $mode === 'debug');
         } else {
             $spawn = spawnAutoImportInBackground($max, true);
             if (isset($spawn['callback'])) {
@@ -82,6 +82,78 @@ $cronUrl = BASE_URL . '/cron/run.php?token=' . urlencode(setting('auto_token'));
         <?php if (!empty($lastResult['log'])): ?>
             <pre class="log-box"><?= e(implode("\n", $lastResult['log'])) ?></pre>
         <?php endif; ?>
+
+        <?php if (!empty($lastResult['items_trace'])): ?>
+            <div class="settings-card">
+                <h2>🔬 Pełne logi procesu — krok po kroku</h2>
+                <p class="hint">Dla każdego przetwarzanego artykułu: konfiguracja źródła, fetch, detekcja daty, ekstrakcja treści, dokładne prompty do OpenAI, surowa odpowiedź modelu, finalny zapis.</p>
+                <?php foreach ($lastResult['items_trace'] as $idx => $trace): ?>
+                    <details class="trace-item" <?= $idx === 0 ? 'open' : '' ?>>
+                        <summary>
+                            <span class="trace-item__num">#<?= $idx + 1 ?></span>
+                            <span class="trace-item__title"><?= e(mb_substr($trace['title'] ?? '(brak tytułu)', 0, 100)) ?></span>
+                            <span class="pill pill--<?= e($trace['steps']['result']['status'] ?? 'pending') ?>"><?= e($trace['steps']['result']['status'] ?? '?') ?></span>
+                        </summary>
+                        <div class="trace-body">
+                            <p class="trace-meta">URL: <code><?= e($trace['external_url'] ?? '') ?></code><br>
+                            Queue ID: #<?= (int)($trace['queue_id'] ?? 0) ?></p>
+
+                            <?php foreach ($trace['steps'] as $stepKey => $stepData): ?>
+                                <details class="trace-step" open>
+                                    <summary><strong><?= e($stepKey) ?></strong></summary>
+                                    <?php if ($stepKey === '5_openai_request' && is_array($stepData)): ?>
+                                        <div class="trace-kv">
+                                            <div><span class="trace-k">Endpoint:</span> <code><?= e($stepData['endpoint']) ?></code></div>
+                                            <div><span class="trace-k">Model:</span> <code><?= e($stepData['model']) ?></code></div>
+                                            <div><span class="trace-k">Temperature:</span> <code><?= e((string)$stepData['temperature']) ?></code></div>
+                                            <div><span class="trace-k">Dostępne kategorie:</span> <code><?= e(implode(', ', $stepData['available_categories'] ?? [])) ?></code></div>
+                                        </div>
+                                        <h4>System prompt</h4>
+                                        <pre class="trace-pre"><?= e($stepData['system_prompt']) ?></pre>
+                                        <h4>User prompt (treść wysłana do modelu)</h4>
+                                        <pre class="trace-pre"><?= e($stepData['user_prompt']) ?></pre>
+                                    <?php elseif ($stepKey === '6_openai_response' && is_array($stepData)): ?>
+                                        <div class="trace-kv">
+                                            <div><span class="trace-k">HTTP status:</span> <code><?= e((string)$stepData['http_status']) ?></code></div>
+                                            <div><span class="trace-k">Tokeny:</span> <code><?= e(json_encode($stepData['usage'] ?? null)) ?></code></div>
+                                            <div><span class="trace-k">Kategoria zwrócona:</span> <code><?= e($stepData['category_raw']) ?></code> → znormalizowana: <strong><?= e($stepData['category_normalized']) ?></strong></div>
+                                        </div>
+                                        <h4>Raw JSON z OpenAI</h4>
+                                        <pre class="trace-pre"><?= e($stepData['raw_json']) ?></pre>
+                                        <h4>Sparsowane pola</h4>
+                                        <pre class="trace-pre"><?= e(json_encode($stepData['parsed'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></pre>
+                                    <?php elseif ($stepKey === '3_date_extraction' && is_array($stepData)): ?>
+                                        <div class="trace-kv">
+                                            <div><span class="trace-k">RSS data:</span> <code><?= e((string)($stepData['rss_ts'] ?? '—')) ?></code></div>
+                                            <div><span class="trace-k">HTML data:</span> <code><?= e((string)($stepData['html_ts'] ?? '—')) ?></code></div>
+                                            <div><span class="trace-k">Użyta data:</span> <strong><?= e((string)($stepData['effective_ts'] ?? '—')) ?></strong> (<?= e($stepData['source_used']) ?>)</div>
+                                        </div>
+                                        <h4>Próby ekstrakcji daty</h4>
+                                        <ol class="trace-attempts">
+                                            <?php foreach ($stepData['attempts'] as $a): ?>
+                                                <li><strong><?= e($a['signal']) ?></strong>
+                                                <?php if (isset($a['value'])): ?> — wartość: <code><?= e($a['value']) ?></code><?php endif; ?>
+                                                <?php if (!empty($a['parsed'])): ?> ✓ sparsowano: <code><?= e($a['parsed']) ?></code><?php endif; ?>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        </ol>
+                                    <?php elseif ($stepKey === '4_content_extraction' && is_array($stepData)): ?>
+                                        <div class="trace-kv">
+                                            <div><span class="trace-k">Źródło treści:</span> <code><?= e($stepData['source']) ?></code></div>
+                                            <div><span class="trace-k">Długość:</span> <code><?= (int)$stepData['length_chars'] ?> znaków</code></div>
+                                        </div>
+                                        <h4>Podgląd treści (max 600 znaków)</h4>
+                                        <pre class="trace-pre"><?= e($stepData['preview']) ?></pre>
+                                    <?php else: ?>
+                                        <pre class="trace-pre"><?= e(is_string($stepData) ? $stepData : json_encode($stepData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></pre>
+                                    <?php endif; ?>
+                                </details>
+                            <?php endforeach; ?>
+                        </div>
+                    </details>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
     <?php endif; ?>
 
     <div class="settings-card">
@@ -94,8 +166,9 @@ $cronUrl = BASE_URL . '/cron/run.php?token=' . urlencode(setting('auto_token'));
             </label>
             <fieldset class="radio-group">
                 <legend>Tryb</legend>
-                <label class="checkbox"><input type="radio" name="mode" value="bg" checked> W tle <small class="hint">(zalecane — strona nie zawiesi się, postęp w „Log uruchomień")</small></label>
+                <label class="checkbox"><input type="radio" name="mode" value="bg" checked> W tle <small class="hint">(zalecane do produkcji — strona nie zawiesi się, postęp w „Log uruchomień")</small></label>
                 <label class="checkbox"><input type="radio" name="mode" value="sync"> Synchronicznie <small class="hint">(czekaj na wynik — pokaże live log poniżej)</small></label>
+                <label class="checkbox"><input type="radio" name="mode" value="debug"> 🔬 Z pełnymi logami procesu <small class="hint">(każdy krok dla każdego artykułu — prompty, treść, dane, OpenAI request/response)</small></label>
             </fieldset>
             <button class="btn btn--primary" type="submit">Uruchom</button>
         </form>
@@ -142,8 +215,21 @@ $cronUrl = BASE_URL . '/cron/run.php?token=' . urlencode(setting('auto_token'));
 
         <h2 style="margin-top:1.5rem">OpenAI</h2>
         <label>API key
-            <input type="password" name="openai_api_key" value="<?= e(setting('openai_api_key', '')) ?>" placeholder="sk-...">
+            <span class="input-with-eye">
+                <input type="password" name="openai_api_key" id="openai_api_key" value="<?= e(setting('openai_api_key', '')) ?>" placeholder="sk-...">
+                <button type="button" class="eye-btn" onclick="togglePass('openai_api_key', this)" aria-label="Pokaż / ukryj hasło" title="Pokaż / ukryj">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+            </span>
         </label>
+        <script>
+        function togglePass(id, btn) {
+            const i = document.getElementById(id);
+            const showing = i.type === 'text';
+            i.type = showing ? 'password' : 'text';
+            btn.classList.toggle('eye-btn--active', !showing);
+        }
+        </script>
         <label>Model
             <input type="text" name="openai_model" value="<?= e(setting('openai_model', 'gpt-4o-mini')) ?>">
         </label>

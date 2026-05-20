@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/functions.php';
-$pageTitle = $pageTitle ?? SITE_NAME . ' — ' . SITE_TAGLINE;
+$pageTitle = $pageTitle ?? (siteName() . ' — ' . siteTagline());
 $pageDescription = $pageDescription ?? SITE_DESCRIPTION;
 $canonical = $canonical ?? BASE_URL . ($_SERVER['REQUEST_URI'] ?? '/');
 $ogImage = $ogImage ?? (BASE_URL . '/assets/images/og-default.svg');
@@ -18,7 +18,7 @@ $ogType = $ogType ?? 'website';
 <meta name="author" content="<?= e(SITE_NAME) ?>">
 <meta name="generator" content="The Daily Signal CMS">
 
-<meta property="og:site_name" content="<?= e(SITE_NAME) ?>">
+<meta property="og:site_name" content="<?= e(siteName()) ?>">
 <meta property="og:title" content="<?= e($pageTitle) ?>">
 <meta property="og:description" content="<?= e($pageDescription) ?>">
 <meta property="og:url" content="<?= e($canonical) ?>">
@@ -62,6 +62,12 @@ $ogType = $ogType ?? 'website';
 </head>
 <body>
 <a class="skip-link" href="#main">Przejdź do treści</a>
+<?php if (setting('top_notice_enabled', '1') === '1' && setting('top_notice_text', '')): ?>
+<div class="top-notice" role="note">
+    <span class="top-notice__icon" aria-hidden="true">📖</span>
+    <span class="top-notice__text"><?= e(setting('top_notice_text', '')) ?></span>
+</div>
+<?php endif; ?>
 <header class="masthead" role="banner">
     <div class="masthead__top">
         <span class="masthead__date"><?= e(formatDate(date('Y-m-d H:i:s'))) ?></span>
@@ -69,9 +75,13 @@ $ogType = $ogType ?? 'website';
     </div>
     <div class="masthead__title">
         <a href="<?= e(BASE_URL) ?>/" aria-label="Strona główna">
-            <h1 class="masthead__logo"><?= e(SITE_NAME) ?></h1>
+            <?php $logo = siteLogoUrl(); if ($logo): ?>
+                <img src="<?= e($logo) ?>" alt="<?= e(siteName()) ?>" class="masthead__logo-img">
+            <?php else: ?>
+                <h1 class="masthead__logo"><?= e(siteName()) ?></h1>
+            <?php endif; ?>
         </a>
-        <p class="masthead__tagline"><?= e(SITE_TAGLINE) ?></p>
+        <p class="masthead__tagline"><?= e(siteTagline()) ?></p>
     </div>
     <nav class="masthead__nav" aria-label="Kategorie">
         <a href="<?= e(BASE_URL) ?>/">Wszystkie</a>
