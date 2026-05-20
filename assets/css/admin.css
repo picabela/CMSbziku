@@ -216,34 +216,38 @@ body {
 /* Editor form */
 .editor-form__grid {
     display: grid;
-    grid-template-columns: 1fr 340px;
+    grid-template-columns: 1fr 360px;
     gap: 1.5rem;
     align-items: start;
 }
 .editor-form__main, .editor-form__side {
     background: var(--card);
     border: 1px solid var(--rule);
-    padding: 1.5rem;
+    padding: 1.75rem;
+    box-shadow: 0 1px 0 var(--rule);
 }
 .editor-form label {
     display: block;
-    margin-bottom: 1rem;
-    font-size: 0.82rem;
-    font-weight: 600;
+    margin-bottom: 1.15rem;
+    font-size: 0.74rem;
+    font-weight: 700;
     color: var(--ink);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
 }
 .editor-form input[type=text],
 .editor-form input[type=password],
+.editor-form input[type=email],
+.editor-form input[type=number],
+.editor-form input[type=date],
 .editor-form input[type=datetime-local],
 .editor-form input[type=file],
 .editor-form select,
 .editor-form textarea {
     display: block;
     width: 100%;
-    margin-top: 0.4rem;
-    padding: 0.6rem 0.75rem;
+    margin-top: 0.45rem;
+    padding: 0.7rem 0.85rem;
     border: 1px solid var(--rule);
     background: #fff;
     font-size: 0.95rem;
@@ -251,20 +255,33 @@ body {
     text-transform: none;
     letter-spacing: normal;
     font-weight: 400;
+    color: var(--ink);
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
+.editor-form input:hover,
+.editor-form select:hover,
+.editor-form textarea:hover { border-color: var(--ink); }
 .editor-form input[type=text]:focus,
 .editor-form input[type=password]:focus,
+.editor-form input[type=email]:focus,
+.editor-form input[type=number]:focus,
+.editor-form input[type=date]:focus,
 .editor-form input[type=datetime-local]:focus,
 .editor-form select:focus,
-.editor-form textarea:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
+.editor-form textarea:focus {
+    outline: 0;
+    border-color: var(--ink);
+    box-shadow: 0 0 0 3px rgba(17,17,17,0.08);
+}
 .editor-form fieldset {
     border: 1px solid var(--rule);
-    padding: 1rem 1.25rem;
-    margin: 0 0 1.25rem;
+    padding: 1.15rem 1.25rem 0.25rem;
+    margin: 0 0 1.5rem;
+    background: #fff;
 }
 .editor-form legend {
     padding: 0 0.5rem;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.15em;
     color: var(--muted);
@@ -282,17 +299,75 @@ body {
 .settings-card {
     background: var(--card);
     border: 1px solid var(--rule);
-    padding: 1.5rem;
+    padding: 1.75rem 2rem;
     margin-bottom: 1.5rem;
-    max-width: 600px;
+    max-width: 720px;
+    box-shadow: 0 1px 0 var(--rule-soft);
 }
 .settings-card h2 {
-    margin: 0 0 1rem;
+    margin: 0 0 1.25rem;
     font-family: 'Playfair Display', serif;
-    font-size: 1.25rem;
+    font-size: 1.4rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--rule);
 }
-.settings-form label { display: block; margin-bottom: 1rem; font-size: 0.85rem; }
-.settings-form input { display: block; width: 100%; margin-top: 0.3rem; padding: 0.6rem 0.75rem; border: 1px solid var(--rule); font-size: 0.95rem; font-family: inherit; }
+.settings-form label {
+    display: block;
+    margin-bottom: 1.15rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink);
+}
+.settings-form input,
+.settings-form select,
+.settings-form textarea {
+    display: block;
+    width: 100%;
+    margin-top: 0.45rem;
+    padding: 0.7rem 0.85rem;
+    border: 1px solid var(--rule);
+    font-size: 0.95rem;
+    font-family: inherit;
+    background: #fff;
+    color: var(--ink);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.settings-form input:hover,
+.settings-form select:hover,
+.settings-form textarea:hover { border-color: var(--ink); }
+.settings-form input:focus,
+.settings-form select:focus,
+.settings-form textarea:focus {
+    outline: 0;
+    border-color: var(--ink);
+    box-shadow: 0 0 0 3px rgba(17,17,17,0.08);
+}
+.settings-form textarea { resize: vertical; line-height: 1.5; }
+
+/* Wiersz z polami w jednej linii */
+.form-row { display: grid; gap: 1rem; }
+.form-row--2 { grid-template-columns: 1fr 1fr; }
+@media (max-width: 700px) {
+    .form-row--2 { grid-template-columns: 1fr; }
+}
+
+.inline-form { display: inline-flex; gap: 0.5rem; align-items: center; }
+.inline-form input[type=text] {
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--rule-soft);
+    background: #fff;
+    font-size: 0.92rem;
+    font-family: inherit;
+    margin: 0;
+    width: auto;
+    min-width: 180px;
+}
+.inline-form input[type=text]:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
 .info-list { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1.25rem; margin: 0; font-size: 0.9rem; }
 .info-list dt { color: var(--muted); }
 .info-list dd { margin: 0; }

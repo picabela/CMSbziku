@@ -181,3 +181,114 @@ function siteLogoUrl(): ?string {
     $v = trim((string)setting('site_logo', ''));
     return $v !== '' ? UPLOAD_URL . '/' . $v : null;
 }
+
+function tagLabel(): string {
+    $v = trim((string)setting('tag_label', ''));
+    return $v !== '' ? $v : 'Tagi';
+}
+
+function tagUrl(string $slug): string {
+    return BASE_URL . '/tag/' . $slug;
+}
+
+/**
+ * Znajdź istniejący tag (po znormalizowanej nazwie) lub stwórz nowy.
+ * Zwraca id tagu.
+ */
+function findOrCreateTag(string $name): ?int {
+    $name = trim($name);
+    if ($name === '' || mb_strlen($name) > 60) return null;
+    $slug = slugify($name);
+    if ($slug === '') return null;
+    $pdo = db();
+    // Próba po slug — case insensitive matching
+    $stmt = $pdo->prepare('SELECT id FROM tags WHERE slug = ?');
+    $stmt->execute([$slug]);
+    $row = $stmt->fetch();
+    if ($row) return (int)$row['id'];
+    try {
+        $pdo->prepare('INSERT INTO tags (name, slug) VALUES (?, ?)')->execute([$name, $slug]);
+        return (int)$pdo->lastInsertId();
+    } catch (Throwable $e) {
+        // race: spróbuj jeszcze raz odczytać
+        $stmt = $pdo->prepare('SELECT id FROM tags WHERE slug = ?');
+        $stmt->execute([$slug]);
+        $row = $stmt->fetch();
+        return $row ? (int)$row['id'] : null;
+    }
+}
+
+function attachTagsToPost(int $postId, array $tagNames): void {
+    if (!$tagNames) return;
+    $pdo = db();
+    // Usuwamy stare powiązania (przy reedycji nadpisujemy)
+    $pdo->prepare('DELETE FROM post_tags WHERE post_id = ?')->execute([$postId]);
+    $ins = $pdo->prepare('INSERT OR IGNORE INTO post_tags (post_id, tag_id) VALUES (?, ?)');
+    $tagIds = [];
+    foreach ($tagNames as $name) {
+        $tagId = findOrCreateTag($name);
+        if ($tagId) {
+            $ins->execute([$postId, $tagId]);
+            $tagIds[] = $tagId;
+        }
+    }
+    refreshTagUsage($tagIds);
+}
+
+function refreshTagUsage(array $tagIds = []): void {
+    $pdo = db();
+    if ($tagIds) {
+        $placeholders = implode(',', array_fill(0, count($tagIds), '?'));
+        $pdo->prepare("UPDATE tags SET usage_count = (SELECT COUNT(*) FROM post_tags WHERE tag_id = tags.id) WHERE id IN ($placeholders)")
+            ->execute($tagIds);
+    } else {
+        $pdo->exec("UPDATE tags SET usage_count = (SELECT COUNT(*) FROM post_tags WHERE tag_id = tags.id)");
+    }
+}
+
+function getPostTags(int $postId): array {
+    $stmt = db()->prepare('SELECT t.* FROM tags t JOIN post_tags pt ON pt.tag_id = t.id WHERE pt.post_id = ? ORDER BY t.name');
+    $stmt->execute([$postId]);
+    return $stmt->fetchAll();
+}
+
+function getTagBySlug(string $slug): ?array {
+    $stmt = db()->prepare('SELECT * FROM tags WHERE slug = ?');
+    $stmt->execute([$slug]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function getPostsByTag(int $tagId, int $page = 1): array {
+    $pdo = db();
+    $offset = ($page - 1) * POSTS_PER_PAGE;
+    $stmt = $pdo->prepare("SELECT p.* FROM posts p JOIN post_tags pt ON pt.post_id = p.id WHERE pt.tag_id = ? AND p.status = 'published' ORDER BY p.published_at DESC LIMIT :limit OFFSET :offset");
+    $stmt->bindValue(1, $tagId, PDO::PARAM_INT);
+    $stmt->bindValue(':limit', POSTS_PER_PAGE, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
+
+function countPostsByTag(int $tagId): int {
+    $stmt = db()->prepare("SELECT COUNT(*) AS c FROM posts p JOIN post_tags pt ON pt.post_id = p.id WHERE pt.tag_id = ? AND p.status = 'published'");
+    $stmt->execute([$tagId]);
+    return (int)$stmt->fetch()['c'];
+}
+
+function allTags(): array {
+    return db()->query('SELECT * FROM tags ORDER BY usage_count DESC, name')->fetchAll();
+}
+
+/**
+ * Renderuje stopkę źródła wg szablonu z ustawień. Placeholder-y: {url}, {source}.
+ * Używane tylko dla NOWYCH publikacji — stare mają stopkę zapisaną w content.
+ */
+function renderSourceAttribution(string $url, string $sourceName, ?string $template = null): string {
+    $tpl = $template ?? setting('source_attribution_template', 'Opracowanie redakcji na podstawie źródła: {url} ({source}).');
+    $tpl = strtr($tpl, [
+        '{url}' => e($url),
+        '{source}' => e($sourceName),
+    ]);
+    return '<hr><p class="source-attribution"><small>' . $tpl . '</small></p>';
+}

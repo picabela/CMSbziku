@@ -12,10 +12,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
     if ($action === 'save') {
         $keys = ['auto_enabled','auto_interval_minutes','auto_posts_per_tick','auto_discovery_interval_minutes','auto_max_age_days','auto_publish',
                  'openai_api_key','openai_model','openai_temperature',
-                 'auto_target_language','auto_default_category','auto_default_author','auto_prompt'];
+                 'auto_target_language','auto_default_category','auto_default_author','auto_prompt',
+                 'auto_max_tags','source_attribution_template','auto_keep_original_date','auto_content_max_chars',
+                 'auto_date_range_enabled','auto_date_from','auto_date_to'];
         foreach ($keys as $k) {
             $v = $_POST[$k] ?? '';
-            if (in_array($k, ['auto_enabled','auto_publish'], true)) $v = isset($_POST[$k]) ? '1' : '0';
+            if (in_array($k, ['auto_enabled','auto_publish','auto_keep_original_date','auto_date_range_enabled'], true)) {
+                $v = isset($_POST[$k]) ? '1' : '0';
+            }
             setSetting($k, (string)$v);
         }
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Ustawienia zapisane.'];
@@ -208,9 +212,44 @@ $cronUrl = BASE_URL . '/cron/run.php?token=' . urlencode(setting('auto_token'));
             <input type="number" name="auto_discovery_interval_minutes" min="5" max="1440" value="<?= e(setting('auto_discovery_interval_minutes', '60')) ?>">
             <small class="hint">Mniejsza wartość = szybciej łapiesz świeże newsy, ale więcej zapytań do źródeł.</small>
         </label>
-        <label>Max wiek artykułu (dni) — szukaj tylko od X dni do dzisiaj
-            <input type="number" name="auto_max_age_days" min="1" max="365" value="<?= e(setting('auto_max_age_days', '3')) ?>">
-            <small class="hint">Artykuły bez wykrytej daty publikacji są zawsze pomijane. Pojedyncze źródło może to nadpisać.</small>
+        <fieldset class="radio-group">
+            <legend>Filtr daty publikacji źródła</legend>
+            <label>Tryb A — Max wiek artykułu (dni)
+                <input type="number" name="auto_max_age_days" min="1" max="365" value="<?= e(setting('auto_max_age_days', '3')) ?>">
+                <small class="hint">Szukaj artykułów od X dni do dzisiaj. Używane gdy przedział dat poniżej jest WYŁĄCZONY. Artykuły bez wykrytej daty publikacji są zawsze pomijane.</small>
+            </label>
+            <label class="checkbox"><input type="checkbox" name="auto_date_range_enabled" value="1" <?= setting('auto_date_range_enabled', '0') === '1' ? 'checked' : '' ?>> <strong>Tryb B — Użyj zamiast tego przedziału dat</strong></label>
+            <div class="form-row form-row--2">
+                <label>Od (data)
+                    <input type="date" name="auto_date_from" value="<?= e(setting('auto_date_from', '')) ?>">
+                </label>
+                <label>Do (data — pusto = dziś)
+                    <input type="date" name="auto_date_to" value="<?= e(setting('auto_date_to', '')) ?>">
+                </label>
+            </div>
+            <p class="hint">Tryb B nadpisuje Tryb A jeśli zaznaczony i "Od" jest wypełnione. Pojedyncze źródło z własnym max_age_days nadpisuje Tryb A.</p>
+        </fieldset>
+
+        <h2 style="margin-top:1.5rem">Treść i ekstrakcja</h2>
+        <label>Limit znaków treści wysyłanej do AI (max długość promptu)
+            <input type="number" name="auto_content_max_chars" min="500" max="200000" step="500" value="<?= e(setting('auto_content_max_chars', '30000')) ?>">
+            <small class="hint">Jeśli artykuł jest krótszy — bierzemy ile jest. Większy limit = lepszy kontekst, ale więcej tokenów. gpt-4o-mini ma okno 128k tokenów (~400k znaków), 30 000 znaków to bezpieczny optymalny default.</small>
+        </label>
+
+        <h2 style="margin-top:1.5rem">Data publikacji nowych artykułów</h2>
+        <label class="checkbox"><input type="checkbox" name="auto_keep_original_date" value="1" <?= setting('auto_keep_original_date', '0') === '1' ? 'checked' : '' ?>> Publikuj z datą oryginalnego artykułu (źródła)</label>
+        <p class="hint">Domyślnie wyłączone — publikacja z chwilą dodania. Włącz, by data publikacji odpowiadała oryginalnej dacie ze źródła.</p>
+
+        <h2 style="margin-top:1.5rem">Stopka źródła pod artykułem</h2>
+        <label>Szablon (placeholder-y: <code>{url}</code>, <code>{source}</code>)
+            <textarea name="source_attribution_template" rows="2"><?= e(setting('source_attribution_template', 'Opracowanie redakcji na podstawie źródła: {url} ({source}).')) ?></textarea>
+            <small class="hint">Zmiany dotyczą tylko NOWYCH publikacji — istniejące artykuły mają stopkę już zapisaną w treści.</small>
+        </label>
+
+        <h2 style="margin-top:1.5rem">Tagi (firmy i marki)</h2>
+        <label>Maksymalna liczba tagów na artykuł
+            <input type="number" name="auto_max_tags" min="0" max="10" value="<?= e(setting('auto_max_tags', '3')) ?>">
+            <small class="hint">AI wyciągnie z tekstu nazwy firm/marek/produktów (np. Google, Bing, Perplexity, ChatGPT). 0 = wyłączone. Istniejące tagi są ponownie użyte — nie tworzymy duplikatów. <a href="tags.php">Zarządzaj tagami</a>.</small>
         </label>
 
         <h2 style="margin-top:1.5rem">OpenAI</h2>

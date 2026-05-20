@@ -102,6 +102,18 @@ include __DIR__ . '/includes/header.php';
     <div class="article__content" itemprop="articleBody">
         <?= $post['content'] ?>
     </div>
+
+    <?php $postTags = getPostTags((int)$post['id']); ?>
+    <?php if ($postTags): ?>
+        <footer class="article__tags" aria-label="<?= e(tagLabel()) ?>">
+            <span class="article__tags-label"><?= e(tagLabel()) ?>:</span>
+            <ul class="tag-list">
+                <?php foreach ($postTags as $t): ?>
+                    <li><a href="<?= e(tagUrl($t['slug'])) ?>" class="tag-chip"><?= e($t['name']) ?></a></li>
+                <?php endforeach; ?>
+            </ul>
+        </footer>
+    <?php endif; ?>
 </article>
 
 <?php $related = getRelatedPosts($post['category'], (int)$post['id']); ?>

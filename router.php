@@ -28,6 +28,12 @@ if (preg_match('#^/kontakt/?$#', $uri)) {
     return true;
 }
 
+if (preg_match('#^/tag/([a-z0-9-]+)/?$#', $uri, $m)) {
+    $_GET['tag'] = $m[1];
+    require __DIR__ . '/tag.php';
+    return true;
+}
+
 if ($uri === '/' || $uri === '/index.php') {
     require __DIR__ . '/index.php';
     return true;

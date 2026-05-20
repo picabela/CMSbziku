@@ -114,9 +114,24 @@ class AutoImporter {
     private function discoverSource(array $source): int {
         $this->logLine("→ Discovery #{$source['id']}: {$source['name']} [" . ($source['source_type'] ?: 'rss') . "]");
 
-        $globalMaxAge = max(1, (int)setting('auto_max_age_days', '3'));
-        $maxAgeDays = !empty($source['max_age_days']) ? (int)$source['max_age_days'] : $globalMaxAge;
-        $cutoff = time() - ($maxAgeDays * 86400);
+        // Przedział dat ma priorytet nad max_age_days, jeśli włączony i poprawnie skonfigurowany.
+        $useDateRange = setting('auto_date_range_enabled', '0') === '1';
+        $rangeFrom = (string)setting('auto_date_from', '');
+        $rangeTo = (string)setting('auto_date_to', '');
+        $rangeFromTs = $rangeFrom !== '' ? strtotime($rangeFrom . ' 00:00:00') : null;
+        $rangeToTs   = $rangeTo   !== '' ? strtotime($rangeTo   . ' 23:59:59') : null;
+
+        if ($useDateRange && $rangeFromTs) {
+            $cutoff = $rangeFromTs;
+            $cutoffUpper = $rangeToTs ?: time();
+            $maxAgeDays = null;
+            $this->logLine('  Discovery filter: przedział dat ' . date('Y-m-d', $rangeFromTs) . ' → ' . ($rangeToTs ? date('Y-m-d', $rangeToTs) : 'dziś'));
+        } else {
+            $globalMaxAge = max(1, (int)setting('auto_max_age_days', '3'));
+            $maxAgeDays = !empty($source['max_age_days']) ? (int)$source['max_age_days'] : $globalMaxAge;
+            $cutoff = time() - ($maxAgeDays * 86400);
+            $cutoffUpper = null;
+        }
 
         $items = (($source['source_type'] ?? 'rss') === 'html')
             ? $this->fetchListing($source)
@@ -148,8 +163,9 @@ class AutoImporter {
             // Wstępny age-filter z RSS-a (jeśli mamy datę). Brak daty z RSS-a NIE
             // pomija — finalny check po dacie z HTML-a robimy w fazie B.
             $rssTs = !empty($item['published']) ? @strtotime($item['published']) : null;
-            if ($rssTs !== null && $rssTs > 0 && $rssTs < $cutoff) {
-                continue;
+            if ($rssTs !== null && $rssTs > 0) {
+                if ($rssTs < $cutoff) continue;
+                if ($cutoffUpper !== null && $rssTs > $cutoffUpper) continue;
             }
 
             $this->enqueueItem($source['id'], $item, $hash, $rssTs ?: null);
@@ -232,9 +248,20 @@ class AutoImporter {
             return;
         }
 
-        $globalMaxAge = max(1, (int)setting('auto_max_age_days', '3'));
-        $maxAgeDays = !empty($source['max_age_days']) ? (int)$source['max_age_days'] : $globalMaxAge;
-        $cutoff = time() - ($maxAgeDays * 86400);
+        $useDateRange = setting('auto_date_range_enabled', '0') === '1';
+        $rangeFromTs = ($useDateRange && setting('auto_date_from', '') !== '') ? strtotime(setting('auto_date_from') . ' 00:00:00') : null;
+        $rangeToTs   = ($useDateRange && setting('auto_date_to', '') !== '')   ? strtotime(setting('auto_date_to') . ' 23:59:59') : null;
+
+        if ($useDateRange && $rangeFromTs) {
+            $cutoff = $rangeFromTs;
+            $cutoffUpper = $rangeToTs ?: time();
+            $maxAgeDays = null;
+        } else {
+            $globalMaxAge = max(1, (int)setting('auto_max_age_days', '3'));
+            $maxAgeDays = !empty($source['max_age_days']) ? (int)$source['max_age_days'] : $globalMaxAge;
+            $cutoff = time() - ($maxAgeDays * 86400);
+            $cutoffUpper = null;
+        }
 
         $this->trace('1_source_config', [
             'id' => (int)$source['id'],
@@ -243,8 +270,10 @@ class AutoImporter {
             'feed_url' => $source['feed_url'],
             'link_selector' => $source['link_selector'] ?: '(heurystyka)',
             'category_hint' => $source['category'],
+            'date_filter_mode' => $useDateRange && $rangeFromTs ? 'range' : 'max_age',
             'max_age_days_used' => $maxAgeDays,
-            'cutoff_date' => date('Y-m-d H:i:s', $cutoff),
+            'cutoff_from' => date('Y-m-d H:i:s', $cutoff),
+            'cutoff_to' => $cutoffUpper ? date('Y-m-d H:i:s', $cutoffUpper) : null,
             'rss_published_ts' => $row['published_ts'] ? date('Y-m-d H:i:s', (int)$row['published_ts']) : null,
         ]);
 
@@ -279,11 +308,14 @@ class AutoImporter {
                 $this->finalizeItemTrace($title);
                 return;
             }
-            if ($effectiveTs < $cutoff) {
-                $this->markQueueSkipped((int)$row['id'], 'Artykuł starszy niż ' . $maxAgeDays . ' dni (' . date('Y-m-d', $effectiveTs) . ').');
+            if ($effectiveTs < $cutoff || ($cutoffUpper !== null && $effectiveTs > $cutoffUpper)) {
+                $reason = $cutoffUpper !== null
+                    ? 'Artykuł poza przedziałem dat (' . date('Y-m-d', $effectiveTs) . ').'
+                    : 'Artykuł starszy niż ' . $maxAgeDays . ' dni (' . date('Y-m-d', $effectiveTs) . ').';
+                $this->markQueueSkipped((int)$row['id'], $reason);
                 $this->skipped++;
-                $this->logLine('    ⏰ Za stary (' . date('Y-m-d', $effectiveTs) . ') — pomijam.');
-                $this->trace('result', ['status' => 'skipped', 'reason' => 'too_old', 'date' => date('Y-m-d', $effectiveTs)]);
+                $this->logLine('    ⏰ Poza zakresem (' . date('Y-m-d', $effectiveTs) . ') — pomijam.');
+                $this->trace('result', ['status' => 'skipped', 'reason' => 'out_of_range', 'date' => date('Y-m-d', $effectiveTs)]);
                 $this->finalizeItemTrace($title);
                 return;
             }
@@ -597,7 +629,8 @@ class AutoImporter {
         }
         $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $text = preg_replace('/\s+/u', ' ', $text);
-        return mb_substr(trim($text), 0, 8000);
+        $limit = max(500, (int)setting('auto_content_max_chars', '30000'));
+        return mb_substr(trim($text), 0, $limit);
     }
 
     private function summarize(string $sourceText, array $item, array $source): array {
@@ -614,10 +647,20 @@ class AutoImporter {
 
         $catPrompt = "\n\nDostępne kategorie (wybierz DOKŁADNIE JEDNĄ pasującą i wpisz jej nazwę w pole \"category\"):\n" . $catList;
 
+        $maxTags = max(0, min(10, (int)setting('auto_max_tags', '3')));
+        $tagPrompt = "";
+        if ($maxTags > 0) {
+            $tagPrompt = "\n\nWyciągnij z artykułu listę tagów — TYLKO nazwy firm, marek, produktów lub usług, które bezpośrednio występują w tekście "
+                . "(np. Google, Bing, Perplexity, ChatGPT, Anthropic, Microsoft Edge, Bing Ads). "
+                . "Maks. {$maxTags} tagów, oryginalna pisownia nazw własnych. "
+                . "Pomiń ogólne pojęcia (SEO, AI, marketing). Jeśli żadna marka/firma nie występuje — zwróć pustą tablicę. "
+                . "Zwróć pole \"tags\" jako JSON-tablicę stringów, np. [\"Google\",\"Perplexity\"].";
+        }
+
         $user = "Źródło: {$source['name']}\n"
               . "Oryginalny tytuł: {$item['title']}\n"
               . "URL źródła: {$item['url']}\n"
-              . $catPrompt . "\n\n"
+              . $catPrompt . $tagPrompt . "\n\n"
               . "Treść źródłowa:\n" . $sourceText;
 
         $payload = [
@@ -717,23 +760,25 @@ class AutoImporter {
         $keywords = trim($gen['keywords'] ?? '');
         $author = setting('auto_default_author', 'Redakcja AI');
 
-        $sourceAttribution = sprintf(
-            '<hr><p class="source-attribution"><small>Opracowanie redakcji na podstawie źródła: %s (%s).</small></p>',
-            e($item['url']),
-            e($source['name'])
-        );
-        $content .= $sourceAttribution;
+        $attributionHtml = renderSourceAttribution($item['url'], $source['name']);
+        $content .= $attributionHtml;
 
         $sourceAutoPublish = $source['auto_publish'];
         $globalAutoPublish = setting('auto_publish', '1') === '1';
         $shouldPublish = $sourceAutoPublish === null ? $globalAutoPublish : ((int)$sourceAutoPublish === 1);
         $status = $shouldPublish ? 'published' : 'draft';
 
+        // Data publikacji: opcjonalnie z oryginału.
+        $useOriginalDate = setting('auto_keep_original_date', '0') === '1';
+        $publishedAt = ($useOriginalDate && !empty($item['published_ts']))
+            ? date('Y-m-d H:i:s', (int)$item['published_ts'])
+            : date('Y-m-d H:i:s');
+
         $slug = uniqueSlug(slugify($title));
 
         $stmt = $this->pdo->prepare("
-            INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, published_at)
-            VALUES (:slug, :title, :subtitle, :excerpt, :content, :alt, :cat, :author, :meta_title, :meta_desc, :meta_kw, :status, CURRENT_TIMESTAMP)
+            INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, source_attribution, published_at)
+            VALUES (:slug, :title, :subtitle, :excerpt, :content, :alt, :cat, :author, :meta_title, :meta_desc, :meta_kw, :status, :attr, :pub)
         ");
         $stmt->execute([
             ':slug' => $slug,
@@ -748,8 +793,23 @@ class AutoImporter {
             ':meta_desc' => $excerpt,
             ':meta_kw' => $keywords,
             ':status' => $status,
+            ':attr' => $attributionHtml,
+            ':pub' => $publishedAt,
         ]);
-        return (int)$this->pdo->lastInsertId();
+        $postId = (int)$this->pdo->lastInsertId();
+
+        // Tagi z odpowiedzi AI
+        $tags = $gen['tags'] ?? [];
+        if (is_string($tags)) {
+            $tags = array_map('trim', explode(',', $tags));
+        }
+        if (is_array($tags)) {
+            $maxTags = max(0, min(10, (int)setting('auto_max_tags', '3')));
+            $tags = array_slice(array_filter(array_map('trim', $tags)), 0, $maxTags);
+            if ($tags) attachTagsToPost($postId, $tags);
+        }
+
+        return $postId;
     }
 
     private function cleanHtml(string $html): string {
