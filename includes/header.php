@@ -83,11 +83,36 @@ $ogType = $ogType ?? 'website';
         </a>
         <p class="masthead__tagline"><?= e(siteTagline()) ?></p>
     </div>
-    <nav class="masthead__nav" aria-label="Kategorie">
+    <button class="masthead__menu-toggle" type="button" aria-expanded="false" aria-controls="primary-nav" aria-label="Otwórz menu">
+        <span class="masthead__menu-bars" aria-hidden="true"></span>
+        <span class="masthead__menu-label">Menu</span>
+    </button>
+    <nav class="masthead__nav" id="primary-nav" aria-label="Kategorie">
         <a href="<?= e(BASE_URL) ?>/">Wszystkie</a>
         <?php foreach (getCategories() as $cat): ?>
             <a href="<?= e(categoryUrl($cat['category'])) ?>"><?= e($cat['category']) ?></a>
         <?php endforeach; ?>
     </nav>
 </header>
+<script>
+(function(){
+    var toggle = document.querySelector('.masthead__menu-toggle');
+    var nav = document.getElementById('primary-nav');
+    if (!toggle || !nav) return;
+    toggle.addEventListener('click', function(){
+        var open = nav.classList.toggle('is-open');
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        toggle.setAttribute('aria-label', open ? 'Zamknij menu' : 'Otwórz menu');
+    });
+    // Zamykaj po kliknięciu linka (mobile UX)
+    nav.querySelectorAll('a').forEach(function(a){
+        a.addEventListener('click', function(){
+            if (nav.classList.contains('is-open')) {
+                nav.classList.remove('is-open');
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+    });
+})();
+</script>
 <main id="main" class="container">

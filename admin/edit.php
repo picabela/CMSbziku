@@ -47,6 +47,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        $tagsRaw = trim($_POST['tags_csv'] ?? '');
+        $tagNames = [];
+        if ($tagsRaw !== '') {
+            $tagNames = array_filter(array_map('trim', explode(',', $tagsRaw)));
+        }
+
         if (empty($errors)) {
             $slugBase = $slugInput !== '' ? slugify($slugInput) : slugify($title);
             $slug = uniqueSlug($slugBase, $post['id'] ?? null);
@@ -54,10 +60,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($post) {
                 $stmt = $pdo->prepare("UPDATE posts SET slug=?, title=?, subtitle=?, excerpt=?, content=?, featured_image=?, featured_image_alt=?, category=?, author=?, meta_title=?, meta_description=?, meta_keywords=?, status=?, published_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?");
                 $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, $publishedAt, $post['id']]);
+                attachTagsToPost((int)$post['id'], $tagNames);
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł zapisany.'];
             } else {
                 $stmt = $pdo->prepare("INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                 $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, $publishedAt]);
+                $newId = (int)$pdo->lastInsertId();
+                attachTagsToPost($newId, $tagNames);
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł utworzony.'];
             }
             header('Location: index.php');
@@ -67,6 +76,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $allCats = allCategories();
+$existingTags = $post ? getPostTags((int)$post['id']) : [];
+$existingTagsCsv = implode(', ', array_map(fn($t) => $t['name'], $existingTags));
 ?>
 <div class="admin-page admin-page--editor">
     <div class="admin-page__head">
@@ -129,6 +140,10 @@ $allCats = allCategories();
                     </label>
                     <label>Slug (URL)
                         <input type="text" name="slug" value="<?= e($post['slug'] ?? '') ?>" placeholder="auto z tytułu">
+                    </label>
+                    <label><?= e(tagLabel()) ?> (oddzielone przecinkiem)
+                        <input type="text" name="tags_csv" value="<?= e($existingTagsCsv) ?>" placeholder="np. Google, Perplexity, ChatGPT">
+                        <small class="hint">Tylko nazwy firm/marek/produktów. Istniejące tagi są ponownie używane.</small>
                     </label>
                 </fieldset>
 

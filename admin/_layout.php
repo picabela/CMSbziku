@@ -19,9 +19,11 @@ $adminTitle = $adminTitle ?? 'Panel redakcji';
             <a href="index.php">Artykuły</a>
             <a href="edit.php">Nowy</a>
             <a href="categories.php">Kategorie</a>
+            <a href="tags.php"><?= e(tagLabel()) ?></a>
             <a href="sources.php">Źródła</a>
             <a href="queue.php">Kolejka</a>
             <a href="auto.php">Auto-import</a>
+            <a href="export.php">Eksport/Import</a>
             <a href="settings.php">Ustawienia</a>
             <a href="<?= e(BASE_URL) ?>/" target="_blank" rel="noopener">Strona ↗</a>
             <a href="logout.php" class="admin-nav__logout">Wyloguj</a>
