@@ -24,6 +24,7 @@ $adminTitle = $adminTitle ?? 'Panel redakcji';
             <a href="queue.php">Kolejka</a>
             <a href="auto.php">Auto-import</a>
             <a href="export.php">Eksport/Import</a>
+            <a href="themes.php">Motywy</a>
             <a href="settings.php">Ustawienia</a>
             <a href="<?= e(BASE_URL) ?>/" target="_blank" rel="noopener">Strona ↗</a>
             <a href="logout.php" class="admin-nav__logout">Wyloguj</a>

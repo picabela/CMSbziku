@@ -230,6 +230,8 @@ function initSchema(PDO $pdo): void {
         'gsc_verification' => '',
         'bing_verification' => '',
         'facebook_pixel_id' => '',
+        // Motyw
+        'active_theme' => 'classic',
     ];
     $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach ($defaults as $k => $v) $stmt->execute([$k, $v]);

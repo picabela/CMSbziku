@@ -1,0 +1,14 @@
+{
+    "name": "Classic Newspaper",
+    "slug": "classic",
+    "version": "1.0.0",
+    "author": "The Daily Signal",
+    "description": "Minimalistyczna czarno-biała gazeta z fontami Playfair Display i Source Serif 4. Inspirowana stylem klasycznej prasy drukowanej. Drop cap, double rule, justify text.",
+    "tags": ["newspaper", "minimal", "black-white", "serif", "print"],
+    "supports": ["dark-mode", "responsive", "hamburger-menu", "tag-cloud", "drop-cap"],
+    "preview_color": "#111111",
+    "screenshot": "screenshot.svg",
+    "fonts": ["Playfair Display", "Source Serif 4", "Inter"],
+    "requires_php": "8.0",
+    "tested_with": "1.0"
+}

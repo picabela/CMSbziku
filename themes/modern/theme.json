@@ -1,0 +1,14 @@
+{
+    "name": "Modern Tech Magazine",
+    "slug": "modern",
+    "version": "1.0.0",
+    "author": "The Daily Signal",
+    "description": "Nowoczesny tech-magazine: Inter sans-serif, czerwony akcent, miękkie cienie, zaokrąglone karty, generous whitespace. Bez drop cap, bez justify. Optymalizacja pod tablety i czytelność na ekranach LCD.",
+    "tags": ["modern", "magazine", "sans-serif", "accent", "rounded", "tech"],
+    "supports": ["dark-mode", "responsive", "hamburger-menu", "tag-cloud"],
+    "preview_color": "#e63946",
+    "screenshot": "screenshot.svg",
+    "fonts": ["Inter"],
+    "requires_php": "8.0",
+    "tested_with": "1.0"
+}

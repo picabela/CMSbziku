@@ -314,6 +314,70 @@ function tagSizeBucket(int $count, int $maxCount): int {
 }
 
 /**
+ * Zwraca slug aktywnego motywu (z fallbackiem do 'classic' jeśli nie istnieje).
+ */
+function activeTheme(): string {
+    $slug = trim((string)setting('active_theme', 'classic'));
+    if ($slug === '' || !is_dir(__DIR__ . '/../themes/' . $slug)) {
+        return 'classic';
+    }
+    return $slug;
+}
+
+/**
+ * Zwraca URL do pliku w aktywnym motywie. Przykład: themeAssetUrl('style.css').
+ * Dodaje filemtime jako cache-buster.
+ */
+function themeAssetUrl(string $file): string {
+    $slug = activeTheme();
+    $path = __DIR__ . '/../themes/' . $slug . '/' . $file;
+    $url  = BASE_URL . '/themes/' . rawurlencode($slug) . '/' . ltrim($file, '/');
+    if (file_exists($path)) $url .= '?v=' . filemtime($path);
+    return $url;
+}
+
+/**
+ * Skanuje katalog themes/ i zwraca listę dostępnych motywów (manifest + ścieżki).
+ */
+function listThemes(): array {
+    $base = __DIR__ . '/../themes';
+    if (!is_dir($base)) return [];
+    $themes = [];
+    foreach (scandir($base) as $entry) {
+        if ($entry === '.' || $entry === '..') continue;
+        $dir = $base . '/' . $entry;
+        if (!is_dir($dir)) continue;
+        $manifest = readThemeManifest($entry);
+        if ($manifest) $themes[] = $manifest;
+    }
+    usort($themes, fn($a, $b) => strcmp($a['name'], $b['name']));
+    return $themes;
+}
+
+/**
+ * Wczytuje theme.json motywu i waliduje wymagane pola.
+ * Zwraca null jeśli nieprawidłowy.
+ */
+function readThemeManifest(string $slug): ?array {
+    $dir = __DIR__ . '/../themes/' . $slug;
+    $manifestFile = $dir . '/theme.json';
+    if (!is_file($manifestFile)) return null;
+    $data = json_decode(file_get_contents($manifestFile), true);
+    if (!is_array($data)) return null;
+    foreach (['name', 'slug', 'version'] as $req) {
+        if (empty($data[$req])) return null;
+    }
+    // Wymagamy też style.css
+    if (!is_file($dir . '/style.css')) return null;
+    $data['_dir'] = $dir;
+    $data['_slug_actual'] = $slug;
+    $data['_screenshot_url'] = is_file($dir . '/screenshot.svg')
+        ? BASE_URL . '/themes/' . rawurlencode($slug) . '/screenshot.svg'
+        : (is_file($dir . '/screenshot.png') ? BASE_URL . '/themes/' . rawurlencode($slug) . '/screenshot.png' : null);
+    return $data;
+}
+
+/**
  * Renderuje surowy custom-code z ustawień + auto-generowane snippety (GTM, GA4, weryfikacje).
  * Lokacja: 'head' | 'body_start' | 'body_end'.
  * Zwraca HTML bez ucieczki — to jest świadome zachowanie (admin paste).
