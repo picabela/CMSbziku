@@ -218,6 +218,18 @@ function initSchema(PDO $pdo): void {
         'auto_date_range_enabled' => '0',
         'auto_date_from' => '',
         'auto_date_to' => '',
+        // Stopka: ile elementów pokazać
+        'footer_tags_count' => '20',
+        'footer_categories_count' => '8',
+        // Custom code (dla GTM, analityki, weryfikacji itp.)
+        'custom_head_code' => '',
+        'custom_body_start_code' => '',
+        'custom_body_end_code' => '',
+        'gtm_id' => '',
+        'ga4_id' => '',
+        'gsc_verification' => '',
+        'bing_verification' => '',
+        'facebook_pixel_id' => '',
     ];
     $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach ($defaults as $k => $v) $stmt->execute([$k, $v]);

@@ -204,35 +204,54 @@ class AutoImporter {
     // ============================================================
 
     private function processQueue(int $maxPerTick): void {
-        $this->logLine("━━ FAZA B: Processing (max {$maxPerTick} na ten tick) ━━");
+        // Cel: $maxPerTick SUKCESÓW na tick (nie prób).
+        // Bezpiecznik: max $maxPerTick * 3 prób / tick, żeby buggy źródło nie spaliło całej kolejki.
+        $safetyCap = max(1, $maxPerTick) * 3;
+        $this->logLine("━━ FAZA B: Processing (cel: {$maxPerTick} sukcesów, max prób: {$safetyCap}) ━━");
 
-        // Najświeższe publikacje najpierw. NULL idą na koniec żeby nie blokować świeżych.
-        $rows = $this->pdo->prepare("
-            SELECT * FROM auto_queue
-            WHERE status = 'pending'
-              AND (next_attempt_at IS NULL OR next_attempt_at <= datetime('now'))
-            ORDER BY (published_ts IS NULL) ASC, published_ts DESC, id ASC
-            LIMIT ?
-        ");
-        $rows->bindValue(1, $maxPerTick, PDO::PARAM_INT);
-        $rows->execute();
-        $items = $rows->fetchAll();
+        $processed = 0;
+        $publishedThisTick = 0;
+        $startedAt = microtime(true);
 
-        if (!$items) {
-            $this->logLine('  Kolejka pusta.');
-            return;
+        while ($publishedThisTick < $maxPerTick && $processed < $safetyCap) {
+            // Bierzemy 1 pending naraz — pozwala iterować dalej po skip/fail.
+            $row = $this->pdo->query("
+                SELECT * FROM auto_queue
+                WHERE status = 'pending'
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= datetime('now'))
+                ORDER BY (published_ts IS NULL) ASC, published_ts DESC, id ASC
+                LIMIT 1
+            ")->fetch();
+
+            if (!$row) {
+                $this->logLine('  Kolejka wyczerpana — kończę (' . $publishedThisTick . '/' . $maxPerTick . ' celu).');
+                break;
+            }
+
+            // Atomowy claim
+            $claim = $this->pdo->prepare("UPDATE auto_queue SET status='processing', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'");
+            $claim->execute([$row['id']]);
+            if ($claim->rowCount() === 0) {
+                // ktoś inny claimnął — pomiń
+                continue;
+            }
+
+            $processed++;
+            $importedBefore = $this->imported;
+            $this->processQueueItem($row);
+            if ($this->imported > $importedBefore) $publishedThisTick++;
+
+            // Bezpiecznik czasowy — jeśli tick zbliża się do 4 min, kończymy żeby cron nie padł
+            if ((microtime(true) - $startedAt) > 240) {
+                $this->logLine('  ⏱  Limit czasowy ticka — kończę (' . $publishedThisTick . '/' . $maxPerTick . ').');
+                break;
+            }
         }
 
-        // Atomowo "claimujemy" wybrane wiersze.
-        $ids = array_map(fn($r) => (int)$r['id'], $items);
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $this->pdo->prepare("UPDATE auto_queue SET status = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id IN ($placeholders) AND status = 'pending'")
-            ->execute($ids);
-
-        $this->logLine('  Przejmuję z kolejki: #' . implode(', #', $ids));
-
-        foreach ($items as $row) {
-            $this->processQueueItem($row);
+        if ($processed === 0) {
+            $this->logLine('  Brak elementów gotowych do przetworzenia (pending/ready).');
+        } else {
+            $this->logLine("Faza B: przetworzono {$processed}, opublikowano {$publishedThisTick}, cel {$maxPerTick}.");
         }
     }
 

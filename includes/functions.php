@@ -281,6 +281,86 @@ function allTags(): array {
 }
 
 /**
+ * Top N tagów po liczbie użyć (do stopki).
+ */
+function topTags(int $limit = 20): array {
+    $stmt = db()->prepare('SELECT * FROM tags WHERE usage_count > 0 ORDER BY usage_count DESC, name LIMIT ?');
+    $stmt->bindValue(1, $limit, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
+
+/**
+ * Top N kategorii po liczbie opublikowanych artykułów.
+ */
+function topCategories(int $limit = 8): array {
+    $stmt = db()->prepare("SELECT category, COUNT(*) AS count FROM posts WHERE status = 'published' GROUP BY category ORDER BY count DESC LIMIT ?");
+    $stmt->bindValue(1, $limit, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
+
+/**
+ * Skaluje rozmiar chipa tagu (1-5) na podstawie rozkładu usage_count w danej liście.
+ */
+function tagSizeBucket(int $count, int $maxCount): int {
+    if ($maxCount <= 1) return 3;
+    $ratio = $count / $maxCount;
+    if ($ratio > 0.8) return 5;
+    if ($ratio > 0.55) return 4;
+    if ($ratio > 0.3) return 3;
+    if ($ratio > 0.1) return 2;
+    return 1;
+}
+
+/**
+ * Renderuje surowy custom-code z ustawień + auto-generowane snippety (GTM, GA4, weryfikacje).
+ * Lokacja: 'head' | 'body_start' | 'body_end'.
+ * Zwraca HTML bez ucieczki — to jest świadome zachowanie (admin paste).
+ */
+function renderCustomCode(string $location): string {
+    $out = '';
+    switch ($location) {
+        case 'head':
+            $gsc = trim((string)setting('gsc_verification', ''));
+            if ($gsc !== '') $out .= '<meta name="google-site-verification" content="' . e($gsc) . '">' . "\n";
+            $bing = trim((string)setting('bing_verification', ''));
+            if ($bing !== '') $out .= '<meta name="msvalidate.01" content="' . e($bing) . '">' . "\n";
+
+            $gtmId = trim((string)setting('gtm_id', ''));
+            if ($gtmId !== '' && preg_match('/^GTM-[A-Z0-9]+$/i', $gtmId)) {
+                $out .= "<!-- Google Tag Manager -->\n<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':"
+                     . "new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src="
+                     . "'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','" . e($gtmId) . "');</script>\n<!-- End Google Tag Manager -->\n";
+            }
+            $ga4 = trim((string)setting('ga4_id', ''));
+            if ($ga4 !== '' && preg_match('/^G-[A-Z0-9]+$/i', $ga4)) {
+                $out .= '<script async src="https://www.googletagmanager.com/gtag/js?id=' . e($ga4) . '"></script>' . "\n"
+                     . "<script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', '" . e($ga4) . "');</script>\n";
+            }
+            $pixel = trim((string)setting('facebook_pixel_id', ''));
+            if ($pixel !== '' && preg_match('/^\d+$/', $pixel)) {
+                $out .= "<!-- Meta Pixel -->\n<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','" . e($pixel) . "');fbq('track','PageView');</script>\n";
+            }
+            $out .= (string)setting('custom_head_code', '');
+            break;
+
+        case 'body_start':
+            $gtmId = trim((string)setting('gtm_id', ''));
+            if ($gtmId !== '' && preg_match('/^GTM-[A-Z0-9]+$/i', $gtmId)) {
+                $out .= '<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=' . e($gtmId) . '" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>' . "\n";
+            }
+            $out .= (string)setting('custom_body_start_code', '');
+            break;
+
+        case 'body_end':
+            $out .= (string)setting('custom_body_end_code', '');
+            break;
+    }
+    return $out;
+}
+
+/**
  * Renderuje stopkę źródła wg szablonu z ustawień. Placeholder-y: {url}, {source}.
  * Używane tylko dla NOWYCH publikacji — stare mają stopkę zapisaną w content.
  */

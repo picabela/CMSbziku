@@ -66,6 +66,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             setSetting('contact_subject_prefix', trim($_POST['contact_subject_prefix'] ?? ''));
             $flash = ['type' => 'success', 'msg' => 'Ustawienia kontaktu zapisane.'];
         }
+
+        if ($section === 'footer') {
+            setSetting('footer_tags_count', max(0, (int)($_POST['footer_tags_count'] ?? 20)));
+            setSetting('footer_categories_count', max(0, (int)($_POST['footer_categories_count'] ?? 8)));
+            $flash = ['type' => 'success', 'msg' => 'Ustawienia stopki zapisane.'];
+        }
+
+        if ($section === 'integrations') {
+            foreach (['gtm_id','ga4_id','gsc_verification','bing_verification','facebook_pixel_id'] as $k) {
+                setSetting($k, trim($_POST[$k] ?? ''));
+            }
+            $flash = ['type' => 'success', 'msg' => 'Integracje zapisane.'];
+        }
+
+        if ($section === 'custom_code') {
+            foreach (['custom_head_code','custom_body_start_code','custom_body_end_code'] as $k) {
+                setSetting($k, (string)($_POST[$k] ?? ''));
+            }
+            $flash = ['type' => 'success', 'msg' => 'Custom code zapisany.'];
+        }
     }
 }
 $logoFile = setting('site_logo');
@@ -129,6 +149,74 @@ $logoFile = setting('site_logo');
             </label>
             <p class="hint">Wiadomości wysyłane są przez PHP <code>mail()</code>. Spam-protection: honeypot + prosta kalkulacja + rate limit 1 wiadomość / 60 s z IP.</p>
             <button class="btn btn--primary" type="submit">Zapisz kontakt</button>
+        </form>
+    </section>
+
+    <section class="settings-card">
+        <h2>Stopka serwisu</h2>
+        <form method="post" class="settings-form">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="section" value="footer">
+            <div class="form-row form-row--2">
+                <label>Liczba kategorii w stopce
+                    <input type="number" name="footer_categories_count" min="0" max="50" value="<?= e(setting('footer_categories_count', '8')) ?>">
+                </label>
+                <label>Liczba tagów w chmurze
+                    <input type="number" name="footer_tags_count" min="0" max="100" value="<?= e(setting('footer_tags_count', '20')) ?>">
+                </label>
+            </div>
+            <p class="hint">Zawsze pokazujemy te z największą liczbą artykułów. Rozmiar chipów tagów skaluje się z popularnością.</p>
+            <button class="btn btn--primary" type="submit">Zapisz stopkę</button>
+        </form>
+    </section>
+
+    <section class="settings-card">
+        <h2>Integracje — analityka i weryfikacja</h2>
+        <form method="post" class="settings-form">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="section" value="integrations">
+            <label>Google Tag Manager ID (format: <code>GTM-XXXXXXX</code>)
+                <input type="text" name="gtm_id" value="<?= e(setting('gtm_id', '')) ?>" placeholder="GTM-XXXXXXX">
+                <small class="hint">Wstrzykuje skrypt do <code>&lt;head&gt;</code> i noscript na początku <code>&lt;body&gt;</code>.</small>
+            </label>
+            <label>Google Analytics 4 — Measurement ID (format: <code>G-XXXXXXXXXX</code>)
+                <input type="text" name="ga4_id" value="<?= e(setting('ga4_id', '')) ?>" placeholder="G-XXXXXXXXXX">
+                <small class="hint">Dodawany tylko jeśli NIE używasz GTM (GA4 podpinasz wtedy przez GTM).</small>
+            </label>
+            <label>Google Search Console — kod weryfikacyjny (sam content, nie cały tag)
+                <input type="text" name="gsc_verification" value="<?= e(setting('gsc_verification', '')) ?>" placeholder="np. abcdef1234567890">
+                <small class="hint">Wstrzykuje <code>&lt;meta name="google-site-verification" content="..."&gt;</code>.</small>
+            </label>
+            <label>Bing Webmaster Tools — kod weryfikacyjny
+                <input type="text" name="bing_verification" value="<?= e(setting('bing_verification', '')) ?>" placeholder="np. ABC123...">
+                <small class="hint">Wstrzykuje <code>&lt;meta name="msvalidate.01" content="..."&gt;</code>.</small>
+            </label>
+            <label>Meta (Facebook) Pixel ID
+                <input type="text" name="facebook_pixel_id" value="<?= e(setting('facebook_pixel_id', '')) ?>" placeholder="np. 1234567890">
+            </label>
+            <p class="hint">Zostaw puste, aby nie aktywować danej integracji. Wszystkie skrypty wczytują się z <code>async</code>.</p>
+            <button class="btn btn--primary" type="submit">Zapisz integracje</button>
+        </form>
+    </section>
+
+    <section class="settings-card settings-card--wide">
+        <h2>Własny kod (header / body)</h2>
+        <form method="post" class="settings-form">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="section" value="custom_code">
+            <label>Kod w <code>&lt;head&gt;</code>
+                <textarea name="custom_head_code" rows="6" placeholder="<!-- np. dodatkowe meta tagi, własny CSS, Hotjar, Clarity, Plausible itp. -->"><?= e(setting('custom_head_code', '')) ?></textarea>
+                <small class="hint">Wstawione zaraz pod auto-generowanym kodem GTM/GA4/weryfikacji.</small>
+            </label>
+            <label>Kod tuż po <code>&lt;body&gt;</code> (otwarciu)
+                <textarea name="custom_body_start_code" rows="4" placeholder="<!-- np. noscript dla pixeli, banery -->"><?= e(setting('custom_body_start_code', '')) ?></textarea>
+            </label>
+            <label>Kod przed <code>&lt;/body&gt;</code> (zamknięciem)
+                <textarea name="custom_body_end_code" rows="6" placeholder="<!-- np. chat widget, late-loading analytics -->"><?= e(setting('custom_body_end_code', '')) ?></textarea>
+                <small class="hint">Tu wstaw skrypty asynchroniczne i widgety — szybciej ładuje się strona.</small>
+            </label>
+            <p class="hint">⚠ Wklejony kod jest renderowany 1:1 bez sanityzacji. Wklejaj tylko zaufane snippety od dostawców (Google, Microsoft, Meta).</p>
+            <button class="btn btn--primary" type="submit">Zapisz custom code</button>
         </form>
     </section>
 

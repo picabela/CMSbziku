@@ -59,8 +59,10 @@ $ogType = $ogType ?? 'website';
     ],
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?>
 </script>
+<?= renderCustomCode('head') ?>
 </head>
 <body>
+<?= renderCustomCode('body_start') ?>
 <a class="skip-link" href="#main">Przejdź do treści</a>
 <?php if (setting('top_notice_enabled', '1') === '1' && setting('top_notice_text', '')): ?>
 <div class="top-notice" role="note">

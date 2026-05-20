@@ -103,11 +103,12 @@ $existingTagsCsv = implode(', ', array_map(fn($t) => $t['name'], $existingTags))
                 <label>Zajawka (excerpt)
                     <textarea name="excerpt" rows="3" placeholder="Krótkie streszczenie wyświetlane na listach"><?= e($post['excerpt'] ?? '') ?></textarea>
                 </label>
-                <label>Treść
+                <div class="editor-form__field">
+                    <span class="editor-form__label">Treść</span>
                     <div id="editor-toolbar"></div>
                     <div id="editor"><?= $post['content'] ?? '' ?></div>
                     <textarea name="content" id="content-hidden" hidden><?= e($post['content'] ?? '') ?></textarea>
-                </label>
+                </div>
             </div>
 
             <aside class="editor-form__side">

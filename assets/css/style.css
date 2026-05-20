@@ -647,16 +647,19 @@ a:hover { text-decoration-thickness: 2px; }
     max-width: var(--maxw);
     margin: 0 auto;
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr;
-    gap: 2rem;
+    grid-template-columns: 1.4fr 1fr 1.6fr;
+    gap: 2.5rem;
+    align-items: start;
 }
 .site-footer__col h3 {
     font-family: var(--sans);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.18em;
     color: var(--muted);
-    margin: 0 0 0.75rem;
+    margin: 0 0 0.85rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule-soft);
 }
 .site-footer__title {
     font-family: var(--serif-display);
@@ -665,7 +668,74 @@ a:hover { text-decoration-thickness: 2px; }
     margin: 0 0 0.5rem;
 }
 .site-footer__col ul { list-style: none; padding: 0; margin: 0; }
-.site-footer__col li { margin: 0.35rem 0; font-size: 0.95rem; }
+.site-footer__col li { margin: 0.4rem 0; font-size: 0.95rem; }
+.site-footer__links li a { color: var(--ink); text-decoration: none; }
+.site-footer__links li a:hover { text-decoration: underline; }
+.site-footer__categories li a {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    color: var(--ink);
+    text-decoration: none;
+    padding: 0.25rem 0;
+    border-bottom: 1px dotted var(--rule-soft);
+    gap: 0.5rem;
+}
+.site-footer__categories li:last-child a { border-bottom: 0; }
+.site-footer__categories li a:hover .site-footer__cat-name { text-decoration: underline; }
+.site-footer__cat-name { font-family: var(--serif-body); }
+.site-footer__cat-count {
+    font-family: var(--sans);
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: var(--paper);
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--rule-soft);
+}
+
+/* Tag cloud — różne rozmiary chipów dla wizualnej dynamiki */
+.footer-tag-cloud {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.4rem;
+    align-items: center;
+    line-height: 1.2;
+}
+.footer-tag-cloud li { margin: 0; font-size: inherit; }
+.footer-tag-chip {
+    display: inline-block;
+    padding: 0.25rem 0.7rem;
+    border: 1px solid var(--rule-soft);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink);
+    text-decoration: none;
+    font-family: var(--sans);
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+    white-space: nowrap;
+}
+.footer-tag-chip:hover {
+    background: var(--ink);
+    color: var(--paper-bright);
+    border-color: var(--ink);
+    transform: translateY(-1px);
+}
+.footer-tag-chip--s1 { font-size: 0.72rem; padding: 0.18rem 0.55rem; opacity: 0.75; }
+.footer-tag-chip--s2 { font-size: 0.8rem;  padding: 0.22rem 0.65rem; opacity: 0.85; }
+.footer-tag-chip--s3 { font-size: 0.88rem; padding: 0.28rem 0.75rem; }
+.footer-tag-chip--s4 { font-size: 0.98rem; padding: 0.32rem 0.85rem; font-weight: 500; }
+.footer-tag-chip--s5 {
+    font-size: 1.08rem;
+    padding: 0.4rem 1rem;
+    font-weight: 700;
+    border-color: var(--ink);
+    background: var(--paper-bright);
+}
+
 .site-footer__copy {
     max-width: var(--maxw);
     margin: 2.5rem auto 0;
@@ -676,8 +746,12 @@ a:hover { text-decoration-thickness: 2px; }
     font-size: 0.78rem;
     color: var(--muted);
 }
-@media (max-width: 700px) {
-    .site-footer__inner { grid-template-columns: 1fr; }
+@media (max-width: 900px) {
+    .site-footer__inner { grid-template-columns: 1fr 1fr; }
+    .site-footer__col--tags { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+    .site-footer__inner { grid-template-columns: 1fr; gap: 2rem; }
 }
 
 /* ---------- Reduce motion ---------- */
