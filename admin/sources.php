@@ -51,7 +51,10 @@ $sources = db()->query('SELECT * FROM sources ORDER BY enabled DESC, name')->fet
 <div class="admin-page">
     <div class="admin-page__head">
         <h1>Źródła RSS / HTML</h1>
-        <a href="source-edit.php" class="btn btn--primary">+ Nowe źródło</a>
+        <div>
+            <a href="sources-bulk.php" class="btn">+ Hurtowe dodawanie</a>
+            <a href="source-edit.php" class="btn btn--primary">+ Nowe źródło</a>
+        </div>
     </div>
     <?php if ($flash): ?><div class="flash flash--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
     <p class="hint">Źródła są odpytywane przez auto-importer. Każde może być typu RSS lub HTML listing (gdy strona nie ma feedu).</p>
