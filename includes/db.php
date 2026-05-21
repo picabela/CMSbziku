@@ -266,8 +266,8 @@ function initSchema(PDO $pdo): void {
         'rodo_consent_mode_v2' => '1',
         'rodo_banner_position' => 'bottom',
         'rodo_banner_style' => 'modal',
-        'rodo_banner_title' => 'Niniejsza strona korzysta z plików cookie',
-        'rodo_banner_text' => 'Wykorzystujemy pliki cookie do spersonalizowania treści i reklam, aby oferować funkcje społecznościowe i analizować ruch w naszej witrynie. Informacje o tym, jak korzystasz z naszej witryny, udostępniamy partnerom społecznościowym, reklamowym i analitycznym. Partnerzy mogą połączyć te informacje z innymi danymi otrzymanymi od Ciebie lub uzyskanymi podczas korzystania z ich usług.',
+        'rodo_banner_title' => 'Szanujemy Twoją prywatność',
+        'rodo_banner_text' => 'Używamy plików cookie, by strona działała sprawnie i lepiej dopasowywała się do Twoich potrzeb. Część z nich jest niezbędna do działania serwisu, inne pomagają nam ulepszać treści i mierzyć efektywność. Wybierz, na co się zgadzasz — w każdej chwili możesz zmienić zdanie.',
         'rodo_show_logo' => '1',
         'rodo_consent_lifetime_days' => '365',
         'rodo_auto_generate_policy' => '1',
@@ -280,12 +280,35 @@ function initSchema(PDO $pdo): void {
         'rodo_show_company_data' => '0',  // czy w polityce ujawniać dane firmy
         'rodo_categories' => '',  // JSON, fallback do domyślnych jeśli puste
         'rodo_color_primary' => '#2540b8',
-        'rodo_accept_all_text' => 'Zezwól na wszystkie',
-        'rodo_accept_selected_text' => 'Zezwól na wybór',
-        'rodo_reject_text' => 'Odmowa',
+        'rodo_accept_all_text' => 'Akceptuję wszystkie',
+        'rodo_accept_selected_text' => 'Zapisz mój wybór',
+        'rodo_reject_text' => 'Tylko niezbędne',
     ];
     $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach ($defaults as $k => $v) $stmt->execute([$k, $v]);
+
+    // Jednorazowa migracja: jeśli teksty RODO są równe starym cookiebot-like defaultom,
+    // podmień na nowe (przyjazne) wartości. Nie ruszamy jeśli user już zmienił.
+    $rodoMigrations = [
+        'rodo_banner_title' => [
+            'old' => 'Niniejsza strona korzysta z plików cookie',
+            'new' => 'Szanujemy Twoją prywatność',
+        ],
+        'rodo_banner_text' => [
+            'old' => 'Wykorzystujemy pliki cookie do spersonalizowania treści i reklam, aby oferować funkcje społecznościowe i analizować ruch w naszej witrynie. Informacje o tym, jak korzystasz z naszej witryny, udostępniamy partnerom społecznościowym, reklamowym i analitycznym. Partnerzy mogą połączyć te informacje z innymi danymi otrzymanymi od Ciebie lub uzyskanymi podczas korzystania z ich usług.',
+            'new' => 'Używamy plików cookie, by strona działała sprawnie i lepiej dopasowywała się do Twoich potrzeb. Część z nich jest niezbędna do działania serwisu, inne pomagają nam ulepszać treści i mierzyć efektywność. Wybierz, na co się zgadzasz — w każdej chwili możesz zmienić zdanie.',
+        ],
+        'rodo_accept_all_text' => ['old' => 'Zezwól na wszystkie', 'new' => 'Akceptuję wszystkie'],
+        'rodo_accept_selected_text' => ['old' => 'Zezwól na wybór', 'new' => 'Zapisz mój wybór'],
+        'rodo_reject_text' => ['old' => 'Odmowa', 'new' => 'Tylko niezbędne'],
+    ];
+    $sel = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
+    $upd = $pdo->prepare('UPDATE settings SET value = ? WHERE key = ?');
+    foreach ($rodoMigrations as $k => $m) {
+        $sel->execute([$k]);
+        $cur = $sel->fetchColumn();
+        if ($cur === $m['old']) $upd->execute([$m['new'], $k]);
+    }
 }
 
 function seedCategories(PDO $pdo): void {

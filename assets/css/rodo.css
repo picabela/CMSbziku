@@ -1,10 +1,16 @@
-/* RODO Consent Banner — Cookiebot-style modal, theme-agnostic */
-:root { --rodo-primary: #2540b8; }
+/* RODO Consent — przyjazny modal, fioletowy akcent, pill toggle */
+:root { --rodo-primary: #2540b8; --rodo-primary-soft: rgba(37,64,184,0.08); }
+
+/* KRYTYCZNE: nadpisanie HTML [hidden] (display:flex by nadpisywał display:none z UA) */
+.rodo-banner[hidden],
+.rodo-toggle-btn[hidden] { display: none !important; }
 
 .rodo-banner {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.5);
+    background: rgba(15, 18, 30, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
     z-index: 99999;
     display: flex;
     align-items: center;
@@ -12,190 +18,309 @@
     padding: 1rem;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.55;
     color: #1a1a1a;
-    animation: rodo-fade 0.25s ease;
+    animation: rodo-fade 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
-@keyframes rodo-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rodo-fade {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 
-.rodo-banner--bottom { align-items: flex-end; padding-bottom: 1rem; }
-.rodo-banner--top { align-items: flex-start; padding-top: 1rem; }
+.rodo-banner--bottom { align-items: flex-end; padding-bottom: 1.25rem; }
+.rodo-banner--top { align-items: flex-start; padding-top: 1.25rem; }
 .rodo-banner--center { align-items: center; }
 
 .rodo-banner__inner {
     background: #fff;
-    max-width: 900px;
+    max-width: 880px;
     width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
-    border-radius: 8px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    max-height: 92vh;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
+    border-radius: 16px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(0,0,0,0.04);
+    position: relative;
+}
+/* Kolorowy akcent na górze — wyróżnik wizualny */
+.rodo-banner__inner::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--rodo-primary), color-mix(in srgb, var(--rodo-primary) 60%, transparent));
+    border-radius: 16px 16px 0 0;
 }
 
-/* Tabs */
+/* Header z ikoną cookie */
+.rodo-header {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 1.5rem 1.75rem 0.5rem;
+}
+.rodo-header__icon {
+    font-size: 1.75rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.rodo-banner__title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0;
+    color: #111;
+    line-height: 1.3;
+}
+
+/* Tabs — minimal, underline z animacją */
 .rodo-banner__tabs {
     display: flex;
-    border-bottom: 1px solid #e5e7eb;
+    gap: 0;
+    margin: 0 1.75rem;
+    padding: 0;
+    border-bottom: 1px solid #e8eaef;
 }
 .rodo-tab {
-    flex: 1;
-    padding: 1.1rem 1rem;
+    padding: 0.95rem 0.25rem;
+    margin-right: 1.5rem;
     background: transparent;
     border: 0;
-    border-bottom: 3px solid transparent;
-    font-size: 1rem;
+    border-bottom: 2px solid transparent;
+    font-size: 0.92rem;
     font-weight: 600;
     color: #6b7280;
     cursor: pointer;
     font-family: inherit;
-    transition: color 0.15s, border-color 0.15s;
+    transition: color 0.2s, border-color 0.2s;
+    position: relative;
+    margin-bottom: -1px;
 }
 .rodo-tab:hover { color: var(--rodo-primary); }
 .rodo-tab.is-active {
     color: var(--rodo-primary);
     border-bottom-color: var(--rodo-primary);
 }
+.rodo-tab:last-child { margin-right: 0; }
 
 /* Panels */
 .rodo-banner__panels {
-    padding: 1.5rem 2rem;
+    padding: 1.25rem 1.75rem 0.5rem;
     overflow-y: auto;
     flex: 1;
 }
-.rodo-panel { line-height: 1.55; }
-.rodo-banner__title { font-size: 1.1rem; font-weight: 700; margin: 0 0 0.85rem; color: #111; }
-.rodo-banner__text { margin: 0 0 1.25rem; color: #374151; }
+.rodo-panel { line-height: 1.6; }
+.rodo-banner__text {
+    margin: 0 0 1.25rem;
+    color: #4b5563;
+    font-size: 0.95rem;
+}
 
-/* Toggle grid */
+/* Pill toggle grid */
 .rodo-toggles {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 0;
-    border-top: 1px solid #e5e7eb;
-    border-left: 1px solid #e5e7eb;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.6rem;
+    background: var(--rodo-primary-soft);
+    padding: 0.85rem;
+    border-radius: 12px;
 }
 .rodo-toggle {
-    border-right: 1px solid #e5e7eb;
-    border-bottom: 1px solid #e5e7eb;
-    padding: 1rem;
+    background: #fff;
+    border-radius: 10px;
+    padding: 0.85rem 0.75rem;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 0.85rem;
+    gap: 0.7rem;
+    border: 1px solid rgba(0,0,0,0.04);
+    transition: transform 0.15s, box-shadow 0.15s;
 }
-.rodo-toggle__name { font-weight: 700; font-size: 0.95rem; color: #111; }
+.rodo-toggle:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.rodo-toggle__name { font-weight: 600; font-size: 0.88rem; color: #111; }
 .rodo-toggle__switch {
     position: relative;
     display: inline-block;
-    width: 56px;
-    height: 28px;
+    width: 46px;
+    height: 26px;
+    flex-shrink: 0;
 }
 .rodo-toggle__switch input { opacity: 0; width: 0; height: 0; position: absolute; }
 .rodo-toggle__slider {
     position: absolute;
     cursor: pointer;
     inset: 0;
-    background: #1a1a1a;
+    background: #d1d5db;
     border-radius: 999px;
-    transition: background 0.2s;
+    transition: background 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .rodo-toggle__slider::before {
     content: '';
     position: absolute;
-    height: 22px;
-    width: 22px;
+    height: 20px;
+    width: 20px;
     left: 3px;
     top: 3px;
     background: #fff;
     border-radius: 50%;
-    transition: transform 0.2s;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .rodo-toggle__switch input:checked + .rodo-toggle__slider { background: var(--rodo-primary); }
-.rodo-toggle__switch input:checked + .rodo-toggle__slider::before { transform: translateX(28px); }
-.rodo-toggle__switch.is-required .rodo-toggle__slider { background: var(--rodo-primary); cursor: not-allowed; opacity: 0.7; }
-.rodo-toggle__switch.is-required .rodo-toggle__slider::before { transform: translateX(28px); }
+.rodo-toggle__switch input:checked + .rodo-toggle__slider::before { transform: translateX(20px); }
+.rodo-toggle__switch.is-required .rodo-toggle__slider {
+    background: var(--rodo-primary);
+    cursor: not-allowed;
+    opacity: 0.85;
+}
+.rodo-toggle__switch.is-required .rodo-toggle__slider::before {
+    transform: translateX(20px);
+    background: rgba(255,255,255,0.95);
+}
 
-/* Details panel */
+/* Details (Kategorie cookies tab) */
 .rodo-cat {
     background: #f9fafb;
     border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    padding: 0.85rem 1rem;
-    margin-bottom: 0.65rem;
+    border-radius: 10px;
+    padding: 0.85rem 1.1rem;
+    margin-bottom: 0.6rem;
 }
-.rodo-cat > summary { cursor: pointer; display: flex; align-items: center; gap: 0.6rem; font-size: 1rem; }
+.rodo-cat > summary {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #111;
+}
 .rodo-cat__badge {
-    font-size: 0.7rem;
-    padding: 0.1rem 0.55rem;
+    font-size: 0.68rem;
+    padding: 0.12rem 0.55rem;
     background: var(--rodo-primary);
     color: #fff;
     border-radius: 999px;
     font-weight: 600;
+    letter-spacing: 0.02em;
 }
-.rodo-cat p { margin: 0.6rem 0 0; color: #4b5563; font-size: 0.92rem; }
-.rodo-cat__examples { font-size: 0.85rem; color: #6b7280; }
+.rodo-cat p { margin: 0.6rem 0 0; color: #4b5563; font-size: 0.9rem; }
+.rodo-cat__examples { font-size: 0.82rem; color: #6b7280; font-family: 'SF Mono', Menlo, monospace; }
 
-.rodo-panel a { color: var(--rodo-primary); text-decoration: underline; }
+.rodo-panel a { color: var(--rodo-primary); text-decoration: underline; text-underline-offset: 2px; }
+.rodo-panel a:hover { text-decoration-thickness: 2px; }
 
-/* Buttons */
+/* Buttons — primary wyróżniony, dwa drugorzędne */
 .rodo-banner__buttons {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: auto auto 1fr;
     gap: 0.5rem;
-    padding: 1rem 1.5rem 1.25rem;
-    border-top: 1px solid #e5e7eb;
+    padding: 1rem 1.75rem 1.25rem;
+    border-top: 1px solid #e8eaef;
+    background: #fafbfc;
 }
 .rodo-btn {
-    padding: 0.95rem 1.1rem;
+    padding: 0.85rem 1.4rem;
     border: 0;
-    background: var(--rodo-primary);
-    color: #fff;
+    background: transparent;
+    color: #374151;
     font-family: inherit;
-    font-size: 0.92rem;
-    font-weight: 700;
+    font-size: 0.9rem;
+    font-weight: 600;
     cursor: pointer;
-    border-radius: 4px;
-    transition: opacity 0.15s, transform 0.05s;
+    border-radius: 999px;
+    transition: background 0.15s, color 0.15s, transform 0.05s, box-shadow 0.15s;
+    border: 1.5px solid transparent;
+    white-space: nowrap;
 }
-.rodo-btn:hover { opacity: 0.92; }
+.rodo-btn:hover { background: rgba(0,0,0,0.04); }
 .rodo-btn:active { transform: translateY(1px); }
 
-/* Floating "Manage cookies" button */
+.rodo-btn--reject {
+    color: #6b7280;
+}
+.rodo-btn--reject:hover { color: #111; background: rgba(0,0,0,0.04); }
+
+.rodo-btn--selected {
+    color: var(--rodo-primary);
+    border-color: var(--rodo-primary-soft);
+}
+.rodo-btn--selected:hover { background: var(--rodo-primary-soft); border-color: color-mix(in srgb, var(--rodo-primary) 30%, transparent); }
+
+.rodo-btn--all {
+    background: var(--rodo-primary);
+    color: #fff;
+    justify-self: end;
+    padding: 0.85rem 1.85rem;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--rodo-primary) 30%, transparent);
+}
+.rodo-btn--all:hover { background: color-mix(in srgb, var(--rodo-primary) 88%, black); color: #fff; }
+
+/* Floating ikona po zamknięciu */
 .rodo-toggle-btn {
     position: fixed;
     bottom: 1.25rem;
     left: 1.25rem;
-    width: 44px;
-    height: 44px;
+    width: 46px;
+    height: 46px;
     border-radius: 50%;
-    background: var(--rodo-primary);
-    color: #fff;
-    border: 0;
+    background: #fff;
+    color: var(--rodo-primary);
+    border: 1.5px solid var(--rodo-primary-soft);
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 9998;
-    transition: transform 0.15s;
+    transition: transform 0.2s, box-shadow 0.2s;
+    font-size: 1.3rem;
 }
-.rodo-toggle-btn:hover { transform: scale(1.08); }
-.rodo-toggle-btn[hidden] { display: none !important; }
+.rodo-toggle-btn:hover {
+    transform: scale(1.1) rotate(-8deg);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+}
 
 @media (max-width: 720px) {
-    .rodo-banner__inner { max-height: 95vh; border-radius: 8px 8px 0 0; }
-    .rodo-banner__panels { padding: 1.25rem 1rem; }
-    .rodo-tab { padding: 0.85rem 0.5rem; font-size: 0.88rem; }
-    .rodo-banner__buttons { grid-template-columns: 1fr; padding: 0.85rem 1rem 1rem; }
+    .rodo-banner { padding: 0; }
+    .rodo-banner__inner { max-height: 100vh; border-radius: 16px 16px 0 0; }
+    .rodo-banner--bottom { padding-bottom: 0; }
+    .rodo-header { padding: 1.25rem 1.25rem 0.5rem; }
+    .rodo-banner__tabs { margin: 0 1.25rem; }
+    .rodo-banner__panels { padding: 1rem 1.25rem 0.5rem; }
+    .rodo-tab { margin-right: 1.1rem; font-size: 0.85rem; padding: 0.85rem 0.25rem; }
+    .rodo-banner__buttons {
+        grid-template-columns: 1fr 1fr;
+        padding: 0.85rem 1.25rem 1rem;
+        gap: 0.5rem;
+    }
+    .rodo-btn--all { grid-column: 1 / -1; justify-self: stretch; order: -1; }
     .rodo-toggles { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 420px) {
     .rodo-toggles { grid-template-columns: 1fr; }
+    .rodo-banner__title { font-size: 1.05rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .rodo-banner, .rodo-toggle__slider, .rodo-toggle__slider::before, .rodo-btn { animation: none !important; transition: none !important; }
+    .rodo-banner, .rodo-toggle__slider, .rodo-toggle__slider::before, .rodo-btn, .rodo-toggle-btn { animation: none !important; transition: none !important; }
+}
+
+@media (prefers-color-scheme: dark) {
+    .rodo-banner__inner { background: #1c1f2a; color: #e5e7eb; }
+    .rodo-banner__title { color: #f3f4f6; }
+    .rodo-banner__text, .rodo-panel { color: #c0c4cc; }
+    .rodo-banner__tabs { border-bottom-color: #2d3142; }
+    .rodo-toggles { background: rgba(255,255,255,0.04); }
+    .rodo-toggle { background: #252836; border-color: rgba(255,255,255,0.05); }
+    .rodo-toggle__name { color: #f3f4f6; }
+    .rodo-toggle__slider { background: #4a5061; }
+    .rodo-cat { background: #252836; border-color: #2d3142; }
+    .rodo-cat > summary { color: #f3f4f6; }
+    .rodo-cat p { color: #c0c4cc; }
+    .rodo-banner__buttons { background: #161924; border-top-color: #2d3142; }
+    .rodo-btn--reject { color: #9ca3af; }
+    .rodo-btn--reject:hover { color: #f3f4f6; background: rgba(255,255,255,0.05); }
+    .rodo-toggle-btn { background: #1c1f2a; }
 }

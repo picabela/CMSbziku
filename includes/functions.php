@@ -767,27 +767,31 @@ function rodoRenderBanner(): string {
 
     ob_start();
     ?>
-<div id="rodo-banner" class="rodo-banner rodo-banner--<?= e($position) ?>" style="--rodo-primary: <?= e($primary) ?>" data-lifetime="<?= (int)$lifetime ?>" data-consent-mode="<?= e(setting('rodo_consent_mode_v2', '1')) ?>" hidden>
+<div id="rodo-banner" class="rodo-banner rodo-banner--<?= e($position) ?>" style="--rodo-primary: <?= e($primary) ?>; --rodo-primary-soft: color-mix(in srgb, <?= e($primary) ?> 10%, transparent)" data-lifetime="<?= (int)$lifetime ?>" data-consent-mode="<?= e(setting('rodo_consent_mode_v2', '1')) ?>" hidden>
     <div class="rodo-banner__inner" role="dialog" aria-labelledby="rodo-title" aria-describedby="rodo-text">
+        <header class="rodo-header">
+            <span class="rodo-header__icon" aria-hidden="true">🍪</span>
+            <h2 id="rodo-title" class="rodo-banner__title"><?= e($title) ?></h2>
+        </header>
+
         <div class="rodo-banner__tabs" role="tablist">
-            <button type="button" class="rodo-tab is-active" role="tab" aria-selected="true" data-tab="consent">Zgoda</button>
-            <button type="button" class="rodo-tab" role="tab" aria-selected="false" data-tab="details">Szczegóły</button>
-            <button type="button" class="rodo-tab" role="tab" aria-selected="false" data-tab="about">O plikach cookies</button>
+            <button type="button" class="rodo-tab is-active" role="tab" aria-selected="true" data-tab="consent">Twój wybór</button>
+            <button type="button" class="rodo-tab" role="tab" aria-selected="false" data-tab="details">Kategorie cookies</button>
+            <button type="button" class="rodo-tab" role="tab" aria-selected="false" data-tab="about">Więcej info</button>
         </div>
 
         <div class="rodo-banner__panels">
             <section class="rodo-panel is-active" data-panel="consent">
-                <h2 id="rodo-title" class="rodo-banner__title"><?= e($title) ?></h2>
                 <p id="rodo-text" class="rodo-banner__text"><?= e($text) ?></p>
 
                 <div class="rodo-toggles">
                     <?php foreach ($cats as $cat): ?>
                         <label class="rodo-toggle">
-                            <span class="rodo-toggle__name"><?= e($cat['name']) ?></span>
                             <span class="rodo-toggle__switch <?= !empty($cat['required']) ? 'is-required is-on' : '' ?>">
                                 <input type="checkbox" data-category="<?= e($cat['key']) ?>" data-consent-mode="<?= e($cat['consent_mode'] ?? '') ?>" <?= !empty($cat['required']) ? 'checked disabled' : '' ?>>
                                 <span class="rodo-toggle__slider" aria-hidden="true"></span>
                             </span>
+                            <span class="rodo-toggle__name"><?= e($cat['name']) ?></span>
                         </label>
                     <?php endforeach; ?>
                 </div>
@@ -804,18 +808,17 @@ function rodoRenderBanner(): string {
                         </summary>
                         <p><?= e($cat['description']) ?></p>
                         <?php if (!empty($cat['examples'])): ?>
-                            <p class="rodo-cat__examples"><strong>Przykłady cookies:</strong> <?= e(implode(', ', $cat['examples'])) ?></p>
+                            <p class="rodo-cat__examples"><strong>Przykłady:</strong> <?= e(implode(', ', $cat['examples'])) ?></p>
                         <?php endif; ?>
                     </details>
                 <?php endforeach; ?>
             </section>
 
             <section class="rodo-panel" data-panel="about" hidden>
-                <p>Pliki cookie to małe pliki tekstowe, które mogą być wykorzystywane przez strony internetowe w celu zwiększenia komfortu użytkowania.</p>
-                <p>Zgodnie z prawem, możemy przechowywać pliki cookie na Twoim urządzeniu, jeśli są one bezwzględnie konieczne do działania tej strony. W przypadku wszystkich innych rodzajów plików cookie potrzebujemy Twojego zezwolenia.</p>
-                <p>Strona ta używa różnych rodzajów plików cookie. Niektóre pliki cookie są umieszczane przez podmioty zewnętrzne, które pojawiają się na naszych stronach.</p>
-                <p>Możesz w każdej chwili zmienić lub wycofać swoje zezwolenie wybierając ikonę zarządzania zgodą cookie w stopce strony.</p>
-                <p>Dowiedz się więcej w naszej <a href="<?= e($policyUrl) ?>">Polityce prywatności</a> i <a href="<?= e($cookiesUrl) ?>">Polityce cookies</a>.</p>
+                <p>Pliki cookie to drobne notatki zostawiane w Twojej przeglądarce, które pomagają stronie zapamiętać Twoje preferencje i sprawnie działać.</p>
+                <p>Część z nich jest absolutnie konieczna — bez nich logowanie czy formularze nie zadziałają. Pozostałe są opcjonalne i służą do statystyk, personalizacji lub reklamy.</p>
+                <p>Sam decydujesz, na co się zgadzasz. W każdej chwili możesz wrócić do tego okna, klikając ikonę 🍪 w lewym dolnym rogu strony.</p>
+                <p>Pełne informacje znajdziesz w naszej <a href="<?= e($policyUrl) ?>">Polityce prywatności</a> oraz <a href="<?= e($cookiesUrl) ?>">Polityce cookies</a>.</p>
             </section>
         </div>
 
@@ -828,9 +831,7 @@ function rodoRenderBanner(): string {
 </div>
 
 <!-- Pływający przycisk "Zarządzaj cookies" -->
-<button type="button" id="rodo-toggle-btn" class="rodo-toggle-btn" title="Zarządzaj zgodą cookies" aria-label="Otwórz preferencje cookies" hidden>
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8.5 8.5h.01M15.5 15.5h.01M9 13.5h.01M14 9.5h.01"/></svg>
-</button>
+<button type="button" id="rodo-toggle-btn" class="rodo-toggle-btn" title="Zarządzaj zgodą cookies" aria-label="Otwórz preferencje cookies" hidden>🍪</button>
 
 <link rel="stylesheet" href="<?= e(BASE_URL) ?>/assets/css/rodo.css">
 <script src="<?= e(BASE_URL) ?>/assets/js/rodo.js" defer></script>
