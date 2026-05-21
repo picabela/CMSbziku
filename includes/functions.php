@@ -640,6 +640,44 @@ function applyAutoInternalLinks(string $html, int $excludePostId = 0): string {
 }
 
 /**
+ * Oceny artykułów (1-5 gwiazdek).
+ */
+function ratingIpHash(): string {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    return hash('sha256', $ip . '|' . $ua . '|' . (defined('SITE_NAME') ? SITE_NAME : ''));
+}
+
+function getPostRatingStats(int $postId): array {
+    $stmt = db()->prepare('SELECT COUNT(*) AS cnt, AVG(rating) AS avg FROM post_ratings WHERE post_id = ?');
+    $stmt->execute([$postId]);
+    $row = $stmt->fetch();
+    return [
+        'count' => (int)($row['cnt'] ?? 0),
+        'average' => $row['cnt'] > 0 ? round((float)$row['avg'], 1) : 0,
+    ];
+}
+
+function getUserRatingForPost(int $postId): ?int {
+    $stmt = db()->prepare('SELECT rating FROM post_ratings WHERE post_id = ? AND ip_hash = ?');
+    $stmt->execute([$postId, ratingIpHash()]);
+    $row = $stmt->fetch();
+    return $row ? (int)$row['rating'] : null;
+}
+
+function submitPostRating(int $postId, int $rating): array {
+    if ($rating < 1 || $rating > 5) return ['ok' => false, 'msg' => 'Ocena musi być w zakresie 1-5.'];
+    $pdo = db();
+    $check = $pdo->prepare('SELECT id FROM posts WHERE id = ? AND status = "published"');
+    $check->execute([$postId]);
+    if (!$check->fetch()) return ['ok' => false, 'msg' => 'Artykuł nie istnieje.'];
+    $hash = ratingIpHash();
+    $stmt = $pdo->prepare('INSERT INTO post_ratings (post_id, ip_hash, rating) VALUES (?, ?, ?) ON CONFLICT(post_id, ip_hash) DO UPDATE SET rating = excluded.rating, created_at = CURRENT_TIMESTAMP');
+    $stmt->execute([$postId, $hash, $rating]);
+    return array_merge(['ok' => true, 'user_rating' => $rating], getPostRatingStats($postId));
+}
+
+/**
  * Auto-konwersja obrazu do WebP. Zwraca nazwę pliku .webp obok oryginału, lub null.
  * Wymaga GD z obsługą WebP (PHP >= 7.0).
  */

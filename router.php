@@ -33,6 +33,11 @@ if (preg_match('#^/szukaj/?$#', $uri)) {
     return true;
 }
 
+if (preg_match('#^/rate/?$#', $uri)) {
+    require __DIR__ . '/rate.php';
+    return true;
+}
+
 if (preg_match('#^/llms\.txt$#', $uri)) {
     require __DIR__ . '/llms.php';
     return true;

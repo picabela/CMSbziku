@@ -314,3 +314,176 @@ a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 1p
     .masthead__menu-toggle { font-size: 0.65rem !important; padding: 0.35rem 0.55rem !important; }
     .masthead__menu-label { display: none; }
 }
+
+/* ============================================================
+   Footer search, article rating, contact RODO consent
+   ============================================================ */
+
+/* Wyszukiwarka w stopce */
+.footer-search { margin: 1rem 0 1.25rem; max-width: 320px; }
+.footer-search__label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    margin-bottom: 0.5rem;
+    opacity: 0.7;
+    font-family: var(--sans, sans-serif);
+    font-weight: 600;
+}
+.footer-search__field {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--paper-bright, #fff);
+    border: 1px solid var(--rule-soft, rgba(0,0,0,0.2));
+    border-radius: 999px;
+    padding: 0.5rem 0.5rem 0.5rem 0.95rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.footer-search__field:focus-within {
+    border-color: var(--accent, currentColor);
+    box-shadow: 0 0 0 3px rgba(0,0,0,0.06);
+}
+.footer-search__icon { color: var(--muted, #6b6b6b); flex-shrink: 0; }
+.footer-search__field input[type=search] {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    padding: 0.4rem 0;
+    font-family: inherit;
+    font-size: 0.92rem;
+    color: var(--ink, #111);
+    outline: none;
+    min-width: 0;
+}
+.footer-search__field input[type=search]::placeholder { color: var(--muted, #6b6b6b); opacity: 0.7; }
+.footer-search__field input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; }
+.footer-search__field button {
+    background: var(--accent, var(--ink, #111));
+    color: #fff;
+    border: 0;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s, opacity 0.15s;
+    flex-shrink: 0;
+}
+.footer-search__field button:hover { opacity: 0.88; transform: scale(1.05); }
+/* Stopka ciemna — odwracamy schemat */
+.site-footer[style*="background"] .footer-search__field,
+.site-footer.dark .footer-search__field {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.12);
+}
+
+/* Ocenianie artykułu — gwiazdki */
+.article__rating {
+    margin: 2.5rem 0 0;
+    padding: 1.5rem 1.75rem;
+    background: var(--paper-bright, #fff);
+    border: 1px solid var(--rule-soft, #d8d6d2);
+    border-radius: 12px;
+    text-align: center;
+}
+.article__rating-title {
+    font-size: 1rem !important;
+    font-family: var(--sans, sans-serif) !important;
+    font-weight: 600 !important;
+    color: var(--ink-soft, #2a2a2a);
+    margin: 0 0 1rem !important;
+    letter-spacing: 0.01em;
+}
+.article__rating-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+}
+.rating-stars {
+    display: inline-flex;
+    gap: 0.25rem;
+    direction: ltr;
+}
+.rating-stars__btn {
+    background: transparent;
+    border: 0;
+    padding: 0.15rem;
+    cursor: pointer;
+    color: #d4d4d8;
+    transition: color 0.15s, transform 0.12s ease;
+    line-height: 0;
+    border-radius: 4px;
+}
+.rating-stars__btn:hover { transform: scale(1.12); }
+.rating-stars__btn:focus-visible { outline: 2px solid var(--accent, #f5b301); outline-offset: 2px; }
+.rating-stars__btn.is-filled { color: #f5b301; }
+.rating-stars__btn[disabled] { cursor: wait; opacity: 0.6; }
+
+.rating-summary {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    font-family: var(--sans, sans-serif);
+    color: var(--ink-soft, #2a2a2a);
+}
+.rating-summary__avg {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--ink, #111);
+    line-height: 1;
+}
+.rating-summary__sep { color: var(--muted, #6b6b6b); font-size: 1rem; }
+.rating-summary__max { color: var(--muted, #6b6b6b); font-size: 0.95rem; }
+.rating-summary__count { font-size: 0.85rem; color: var(--muted, #6b6b6b); margin-left: 0.4rem; }
+
+.rating-message {
+    font-family: var(--sans, sans-serif);
+    font-size: 0.88rem;
+    margin: 0.85rem 0 0;
+    padding: 0.5rem 0.85rem;
+    border-radius: 6px;
+    display: inline-block;
+}
+.rating-message--ok { background: rgba(6,167,125,0.12); color: #047857; }
+.rating-message--err { background: rgba(180,30,30,0.1); color: #b91c1c; }
+
+@media (max-width: 480px) {
+    .article__rating { padding: 1.25rem 1rem; }
+    .rating-stars__btn svg { width: 28px; height: 28px; }
+    .rating-summary__avg { font-size: 1.35rem; }
+}
+
+/* RODO consent w formularzu kontaktowym */
+.contact-form__consent {
+    display: flex !important;
+    align-items: flex-start;
+    gap: 0.65rem;
+    font-size: 0.85rem !important;
+    color: var(--ink, #111) !important;
+    line-height: 1.5;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    background: rgba(0,0,0,0.02);
+    padding: 0.85rem 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--rule-soft, #d8d6d2);
+    font-weight: 400 !important;
+}
+.contact-form__consent input[type=checkbox] {
+    margin: 0 !important;
+    width: 18px !important;
+    height: 18px !important;
+    flex-shrink: 0;
+    margin-top: 0.15rem !important;
+    accent-color: var(--accent, var(--ink, #111));
+    cursor: pointer;
+}
+.contact-form__consent span { flex: 1; }
+.contact-form__consent a { color: var(--accent, var(--ink, #111)); text-decoration: underline; }
+.contact-form__required { color: #b91c1c; font-weight: 700; }

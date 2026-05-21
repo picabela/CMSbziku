@@ -170,6 +170,17 @@ function initSchema(PDO $pdo): void {
         );
         CREATE INDEX IF NOT EXISTS idx_post_tags_post ON post_tags(post_id);
         CREATE INDEX IF NOT EXISTS idx_post_tags_tag ON post_tags(tag_id);
+
+        CREATE TABLE IF NOT EXISTS post_ratings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id INTEGER NOT NULL,
+            ip_hash TEXT NOT NULL,
+            rating INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(post_id, ip_hash),
+            FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_ratings_post ON post_ratings(post_id);
     ");
 
     // Lekkie migracje dla istniejących instalacji
@@ -261,6 +272,8 @@ function initSchema(PDO $pdo): void {
         'webp_conversion' => '1',
         'reading_progress_bar' => '1',
         'critical_css_inline' => '1',
+        // Ratings
+        'ratings_enabled' => '1',
         // RODO / Cookie consent
         'rodo_enabled' => '0',
         'rodo_consent_mode_v2' => '1',

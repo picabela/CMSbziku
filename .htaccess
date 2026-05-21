@@ -48,6 +48,9 @@ DirectoryIndex index.php index.html
     # Search: /szukaj?q=... -> szukaj.php
     RewriteRule ^szukaj/?$ szukaj.php [QSA,L]
 
+    # AJAX rating endpoint
+    RewriteRule ^rate/?$ rate.php [L]
+
     # Skip real files & directories
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d

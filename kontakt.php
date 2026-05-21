@@ -35,6 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $values['email'] = trim($_POST['email'] ?? '');
         $values['message'] = trim($_POST['message'] ?? '');
         $captchaAnswer = (int)($_POST['captcha'] ?? 0);
+        $rodoConsent = isset($_POST['rodo_consent']);
+        $rodoRequired = rodoEnabled();
 
         // Rate limit: 1 wiadomość / 60s z tej sesji
         if (!empty($_SESSION['contact_last_send']) && time() - $_SESSION['contact_last_send'] < 60) {
@@ -43,6 +45,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($captchaAnswer !== (int)$captcha['answer']) {
             $errors[] = 'Wynik dodawania jest nieprawidłowy.';
+        }
+        if ($rodoRequired && !$rodoConsent) {
+            $errors[] = 'Aby wysłać wiadomość, zaznacz zgodę na przetwarzanie danych zgodnie z polityką prywatności.';
         }
         if ($values['name'] === '' || mb_strlen($values['name']) > 100) $errors[] = 'Podaj imię (max 100 znaków).';
         if (!filter_var($values['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Podaj prawidłowy e-mail.';
@@ -143,6 +148,13 @@ include __DIR__ . '/includes/header.php';
                 Ile to jest <strong><?= (int)$captcha['a'] ?> + <?= (int)$captcha['b'] ?></strong>?
                 <input type="number" name="captcha" required min="0" max="99" inputmode="numeric" autocomplete="off">
             </label>
+
+            <?php if (rodoEnabled()): ?>
+                <label class="contact-form__consent">
+                    <input type="checkbox" name="rodo_consent" value="1" required>
+                    <span>Wyrażam zgodę na przetwarzanie moich danych osobowych (imię, e-mail) w celu udzielenia odpowiedzi na wysłaną wiadomość. Zapoznałem(am) się z <a href="<?= e(BASE_URL) ?>/strona/polityka-prywatnosci" target="_blank" rel="noopener">Polityką prywatności</a>. <span class="contact-form__required">*</span></span>
+                </label>
+            <?php endif; ?>
 
             <button type="submit" class="btn btn--primary">Wyślij wiadomość</button>
         </form>

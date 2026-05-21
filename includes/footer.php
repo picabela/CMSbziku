@@ -4,6 +4,18 @@
         <div class="site-footer__col site-footer__col--brand">
             <h2 class="site-footer__title"><?= e(siteName()) ?></h2>
             <p><?= e(siteTagline()) ?></p>
+
+            <form class="footer-search" method="get" action="<?= e(BASE_URL) ?>/szukaj" role="search">
+                <label class="footer-search__label" for="footer-search-input">Szukaj na stronie</label>
+                <div class="footer-search__field">
+                    <svg class="footer-search__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input type="search" id="footer-search-input" name="q" placeholder="Wpisz frazę…" minlength="2" required autocomplete="off">
+                    <button type="submit" aria-label="Szukaj">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+            </form>
+
             <ul class="site-footer__links">
                 <?php $footerMenu = getMenuItems('footer'); ?>
                 <?php if ($footerMenu): ?>
