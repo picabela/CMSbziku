@@ -97,9 +97,12 @@ if (setting('critical_css_inline', '1') === '1' && file_exists($criticalPath)): 
     ],
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?>
 </script>
+<!-- RODO Consent Mode v2 — MUSI być przed GTM/GA4/Pixel -->
+<?= rodoConsentModeDefaults() ?>
 <?= renderCustomCode('head') ?>
 </head>
 <body>
+<?= rodoRenderBanner() ?>
 <?= renderCustomCode('body_start') ?>
 <a class="skip-link" href="#main">Przejdź do treści</a>
 <?php if (setting('top_notice_enabled', '1') === '1' && setting('top_notice_text', '')): ?>

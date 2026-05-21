@@ -261,6 +261,28 @@ function initSchema(PDO $pdo): void {
         'webp_conversion' => '1',
         'reading_progress_bar' => '1',
         'critical_css_inline' => '1',
+        // RODO / Cookie consent
+        'rodo_enabled' => '0',
+        'rodo_consent_mode_v2' => '1',
+        'rodo_banner_position' => 'bottom',
+        'rodo_banner_style' => 'modal',
+        'rodo_banner_title' => 'Niniejsza strona korzysta z plików cookie',
+        'rodo_banner_text' => 'Wykorzystujemy pliki cookie do spersonalizowania treści i reklam, aby oferować funkcje społecznościowe i analizować ruch w naszej witrynie. Informacje o tym, jak korzystasz z naszej witryny, udostępniamy partnerom społecznościowym, reklamowym i analitycznym. Partnerzy mogą połączyć te informacje z innymi danymi otrzymanymi od Ciebie lub uzyskanymi podczas korzystania z ich usług.',
+        'rodo_show_logo' => '1',
+        'rodo_consent_lifetime_days' => '365',
+        'rodo_auto_generate_policy' => '1',
+        'rodo_company_form' => 'individual',  // individual | company
+        'rodo_company_name' => '',
+        'rodo_company_address' => '',
+        'rodo_company_email' => '',
+        'rodo_company_nip' => '',
+        'rodo_dpo_contact' => '',
+        'rodo_show_company_data' => '0',  // czy w polityce ujawniać dane firmy
+        'rodo_categories' => '',  // JSON, fallback do domyślnych jeśli puste
+        'rodo_color_primary' => '#2540b8',
+        'rodo_accept_all_text' => 'Zezwól na wszystkie',
+        'rodo_accept_selected_text' => 'Zezwól na wybór',
+        'rodo_reject_text' => 'Odmowa',
     ];
     $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach ($defaults as $k => $v) $stmt->execute([$k, $v]);

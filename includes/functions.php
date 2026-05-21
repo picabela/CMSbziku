@@ -668,6 +668,336 @@ function convertImageToWebp(string $sourcePath, int $quality = 82): ?string {
 }
 
 /**
+ * Domyślne kategorie cookies w stylu Cookiebot.
+ */
+function rodoDefaultCategories(): array {
+    return [
+        [
+            'key' => 'necessary',
+            'name' => 'Niezbędne',
+            'required' => true,
+            'consent_mode' => 'security_storage',
+            'description' => 'Pliki cookie niezbędne pomagają uczynić stronę zdatną do użytku, włączając podstawowe funkcje, takie jak nawigacja na stronie czy dostęp do bezpiecznych obszarów strony. Strona internetowa nie może funkcjonować poprawnie bez tych ciasteczek.',
+            'examples' => ['PHPSESSID', 'csrf', 'rodo_consent'],
+        ],
+        [
+            'key' => 'preferences',
+            'name' => 'Preferencje',
+            'required' => false,
+            'consent_mode' => 'functionality_storage,personalization_storage',
+            'description' => 'Pliki cookie preferencji umożliwiają zapamiętanie informacji, które zmieniają sposób wyglądu lub działania strony, jak preferowany język lub region, w którym znajduje się użytkownik.',
+            'examples' => [],
+        ],
+        [
+            'key' => 'statistics',
+            'name' => 'Statystyka',
+            'required' => false,
+            'consent_mode' => 'analytics_storage',
+            'description' => 'Pliki cookie statystyczne pomagają właścicielom stron internetowych zrozumieć, w jaki sposób różni użytkownicy zachowują się na stronie, gromadząc i zgłaszając anonimowe informacje.',
+            'examples' => ['_ga', '_gid', '_gat'],
+        ],
+        [
+            'key' => 'marketing',
+            'name' => 'Marketing',
+            'required' => false,
+            'consent_mode' => 'ad_storage,ad_user_data,ad_personalization',
+            'description' => 'Pliki cookie marketingowe stosowane są w celu śledzenia użytkowników na stronach internetowych. Celem jest wyświetlanie reklam, które są istotne i interesujące dla poszczególnych użytkowników i tym samym bardziej cenne dla wydawców i reklamodawców.',
+            'examples' => ['_fbp', 'fr', '_gcl_au'],
+        ],
+    ];
+}
+
+function rodoGetCategories(): array {
+    $json = setting('rodo_categories', '');
+    if ($json) {
+        $decoded = json_decode($json, true);
+        if (is_array($decoded) && $decoded) return $decoded;
+    }
+    return rodoDefaultCategories();
+}
+
+function rodoEnabled(): bool {
+    return setting('rodo_enabled', '0') === '1';
+}
+
+/**
+ * Generuje skrypt Consent Mode v2 (Google) — wstawiany ZANIM załadują się GTM/GA4/Pixel.
+ * Domyślnie wszystko 'denied' + 'security_storage' granted.
+ */
+function rodoConsentModeDefaults(): string {
+    if (!rodoEnabled() || setting('rodo_consent_mode_v2', '1') !== '1') return '';
+    return <<<HTML
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('consent', 'default', {
+    'ad_storage': 'denied',
+    'ad_user_data': 'denied',
+    'ad_personalization': 'denied',
+    'analytics_storage': 'denied',
+    'functionality_storage': 'denied',
+    'personalization_storage': 'denied',
+    'security_storage': 'granted',
+    'wait_for_update': 500
+});
+gtag('set', 'ads_data_redaction', true);
+gtag('set', 'url_passthrough', false);
+</script>
+HTML;
+}
+
+/**
+ * Renderuje banner zgody — wstrzykiwany tuż po <body>.
+ */
+function rodoRenderBanner(): string {
+    if (!rodoEnabled()) return '';
+
+    $title = setting('rodo_banner_title', 'Niniejsza strona korzysta z plików cookie');
+    $text  = setting('rodo_banner_text', '');
+    $position = setting('rodo_banner_position', 'bottom');
+    $primary = setting('rodo_color_primary', '#2540b8');
+    $lifetime = max(1, (int)setting('rodo_consent_lifetime_days', '365'));
+    $cats = rodoGetCategories();
+    $policyUrl = BASE_URL . '/strona/polityka-prywatnosci';
+    $cookiesUrl = BASE_URL . '/strona/polityka-cookies';
+
+    $btnAcceptAll = e(setting('rodo_accept_all_text', 'Zezwól na wszystkie'));
+    $btnAcceptSel = e(setting('rodo_accept_selected_text', 'Zezwól na wybór'));
+    $btnReject    = e(setting('rodo_reject_text', 'Odmowa'));
+
+    ob_start();
+    ?>
+<div id="rodo-banner" class="rodo-banner rodo-banner--<?= e($position) ?>" style="--rodo-primary: <?= e($primary) ?>" data-lifetime="<?= (int)$lifetime ?>" data-consent-mode="<?= e(setting('rodo_consent_mode_v2', '1')) ?>" hidden>
+    <div class="rodo-banner__inner" role="dialog" aria-labelledby="rodo-title" aria-describedby="rodo-text">
+        <div class="rodo-banner__tabs" role="tablist">
+            <button type="button" class="rodo-tab is-active" role="tab" aria-selected="true" data-tab="consent">Zgoda</button>
+            <button type="button" class="rodo-tab" role="tab" aria-selected="false" data-tab="details">Szczegóły</button>
+            <button type="button" class="rodo-tab" role="tab" aria-selected="false" data-tab="about">O plikach cookies</button>
+        </div>
+
+        <div class="rodo-banner__panels">
+            <section class="rodo-panel is-active" data-panel="consent">
+                <h2 id="rodo-title" class="rodo-banner__title"><?= e($title) ?></h2>
+                <p id="rodo-text" class="rodo-banner__text"><?= e($text) ?></p>
+
+                <div class="rodo-toggles">
+                    <?php foreach ($cats as $cat): ?>
+                        <label class="rodo-toggle">
+                            <span class="rodo-toggle__name"><?= e($cat['name']) ?></span>
+                            <span class="rodo-toggle__switch <?= !empty($cat['required']) ? 'is-required is-on' : '' ?>">
+                                <input type="checkbox" data-category="<?= e($cat['key']) ?>" data-consent-mode="<?= e($cat['consent_mode'] ?? '') ?>" <?= !empty($cat['required']) ? 'checked disabled' : '' ?>>
+                                <span class="rodo-toggle__slider" aria-hidden="true"></span>
+                            </span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+
+            <section class="rodo-panel" data-panel="details" hidden>
+                <?php foreach ($cats as $cat): ?>
+                    <details class="rodo-cat" <?= !empty($cat['required']) ? 'open' : '' ?>>
+                        <summary>
+                            <strong><?= e($cat['name']) ?></strong>
+                            <?php if (!empty($cat['required'])): ?>
+                                <span class="rodo-cat__badge">Zawsze aktywne</span>
+                            <?php endif; ?>
+                        </summary>
+                        <p><?= e($cat['description']) ?></p>
+                        <?php if (!empty($cat['examples'])): ?>
+                            <p class="rodo-cat__examples"><strong>Przykłady cookies:</strong> <?= e(implode(', ', $cat['examples'])) ?></p>
+                        <?php endif; ?>
+                    </details>
+                <?php endforeach; ?>
+            </section>
+
+            <section class="rodo-panel" data-panel="about" hidden>
+                <p>Pliki cookie to małe pliki tekstowe, które mogą być wykorzystywane przez strony internetowe w celu zwiększenia komfortu użytkowania.</p>
+                <p>Zgodnie z prawem, możemy przechowywać pliki cookie na Twoim urządzeniu, jeśli są one bezwzględnie konieczne do działania tej strony. W przypadku wszystkich innych rodzajów plików cookie potrzebujemy Twojego zezwolenia.</p>
+                <p>Strona ta używa różnych rodzajów plików cookie. Niektóre pliki cookie są umieszczane przez podmioty zewnętrzne, które pojawiają się na naszych stronach.</p>
+                <p>Możesz w każdej chwili zmienić lub wycofać swoje zezwolenie wybierając ikonę zarządzania zgodą cookie w stopce strony.</p>
+                <p>Dowiedz się więcej w naszej <a href="<?= e($policyUrl) ?>">Polityce prywatności</a> i <a href="<?= e($cookiesUrl) ?>">Polityce cookies</a>.</p>
+            </section>
+        </div>
+
+        <div class="rodo-banner__buttons">
+            <button type="button" class="rodo-btn rodo-btn--reject" data-action="reject"><?= $btnReject ?></button>
+            <button type="button" class="rodo-btn rodo-btn--selected" data-action="selected"><?= $btnAcceptSel ?></button>
+            <button type="button" class="rodo-btn rodo-btn--all" data-action="all"><?= $btnAcceptAll ?></button>
+        </div>
+    </div>
+</div>
+
+<!-- Pływający przycisk "Zarządzaj cookies" -->
+<button type="button" id="rodo-toggle-btn" class="rodo-toggle-btn" title="Zarządzaj zgodą cookies" aria-label="Otwórz preferencje cookies" hidden>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8.5 8.5h.01M15.5 15.5h.01M9 13.5h.01M14 9.5h.01"/></svg>
+</button>
+
+<link rel="stylesheet" href="<?= e(BASE_URL) ?>/assets/css/rodo.css">
+<script src="<?= e(BASE_URL) ?>/assets/js/rodo.js" defer></script>
+<?php
+    return ob_get_clean();
+}
+
+/**
+ * Generuje treść polityki prywatności (uniwersalna, dla osoby fizycznej lub firmy).
+ * Wywoływana z admin/rodo.php po zmianie ustawień.
+ */
+function rodoGeneratePrivacyPolicy(): string {
+    $name = trim((string)setting('rodo_company_name', ''));
+    $email = trim((string)setting('rodo_company_email', ''));
+    $address = trim((string)setting('rodo_company_address', ''));
+    $nip = trim((string)setting('rodo_company_nip', ''));
+    $dpo = trim((string)setting('rodo_dpo_contact', ''));
+    $form = setting('rodo_company_form', 'individual');
+    $show = setting('rodo_show_company_data', '0') === '1';
+    $siteName = siteName();
+    $siteUrl = BASE_URL;
+    $date = date('d.m.Y');
+
+    $admin = '';
+    if ($show && $name) {
+        if ($form === 'company') {
+            $admin = '<p>Administratorem danych osobowych jest <strong>' . e($name) . '</strong>';
+            if ($address) $admin .= ', z siedzibą: ' . e($address);
+            if ($nip) $admin .= ', NIP: ' . e($nip);
+            if ($email) $admin .= ', e-mail: <a href="mailto:' . e($email) . '">' . e($email) . '</a>';
+            $admin .= ' (dalej: „Administrator").</p>';
+        } else {
+            $admin = '<p>Administratorem danych osobowych jest ' . e($name);
+            if ($email) $admin .= ', adres e-mail: <a href="mailto:' . e($email) . '">' . e($email) . '</a>';
+            $admin .= ' (dalej: „Administrator").</p>';
+        }
+    } else {
+        $admin = '<p>Administratorem danych osobowych jest właściciel serwisu <strong>' . e($siteName) . '</strong> dostępnego pod adresem <a href="' . e($siteUrl) . '">' . e($siteUrl) . '</a> (dalej: „Administrator"). Dane kontaktowe Administratora są dostępne na stronie <a href="' . e($siteUrl) . '/kontakt">Kontakt</a>.</p>';
+    }
+
+    $dpoSection = $dpo ? '<p>W sprawach związanych z ochroną danych osobowych można kontaktować się z Inspektorem Ochrony Danych pod adresem: <a href="mailto:' . e($dpo) . '">' . e($dpo) . '</a>.</p>' : '';
+
+    return <<<HTML
+<p><em>Data ostatniej aktualizacji: {$date}</em></p>
+
+<h2>1. Administrator danych osobowych</h2>
+{$admin}
+{$dpoSection}
+
+<h2>2. Zakres zbieranych danych</h2>
+<p>Administrator zbiera następujące dane osobowe:</p>
+<ul>
+    <li><strong>Dane podawane dobrowolnie</strong> — w formularzu kontaktowym: imię, adres e-mail, treść wiadomości</li>
+    <li><strong>Dane techniczne</strong> — adres IP, informacje o przeglądarce i urządzeniu (zapisywane w logach serwera przez okres do 90 dni dla celów bezpieczeństwa)</li>
+    <li><strong>Pliki cookies</strong> — szczegółowo opisane w <a href="/strona/polityka-cookies">Polityce cookies</a></li>
+</ul>
+
+<h2>3. Cel i podstawa prawna przetwarzania</h2>
+<p>Dane osobowe są przetwarzane w następujących celach:</p>
+<ul>
+    <li><strong>Obsługa formularza kontaktowego</strong> — na podstawie art. 6 ust. 1 lit. f RODO (prawnie uzasadniony interes Administratora)</li>
+    <li><strong>Pliki cookies i analityka</strong> — na podstawie art. 6 ust. 1 lit. a RODO (zgoda użytkownika)</li>
+    <li><strong>Bezpieczeństwo serwisu</strong> — na podstawie art. 6 ust. 1 lit. f RODO (prawnie uzasadniony interes)</li>
+</ul>
+
+<h2>4. Okres przechowywania danych</h2>
+<ul>
+    <li>Wiadomości z formularza kontaktowego: do 12 miesięcy lub do zakończenia korespondencji</li>
+    <li>Logi serwera: do 90 dni</li>
+    <li>Pliki cookies: do momentu wycofania zgody lub upływu czasu ich ważności</li>
+</ul>
+
+<h2>5. Prawa użytkownika</h2>
+<p>W związku z przetwarzaniem danych osobowych, użytkownik posiada następujące prawa:</p>
+<ul>
+    <li>Prawo dostępu do swoich danych osobowych (art. 15 RODO)</li>
+    <li>Prawo do sprostowania danych (art. 16 RODO)</li>
+    <li>Prawo do usunięcia danych — „prawo do bycia zapomnianym" (art. 17 RODO)</li>
+    <li>Prawo do ograniczenia przetwarzania (art. 18 RODO)</li>
+    <li>Prawo do przenoszenia danych (art. 20 RODO)</li>
+    <li>Prawo do wniesienia sprzeciwu wobec przetwarzania (art. 21 RODO)</li>
+    <li>Prawo do wycofania zgody w dowolnym momencie (art. 7 ust. 3 RODO)</li>
+    <li>Prawo do wniesienia skargi do organu nadzorczego — Prezesa Urzędu Ochrony Danych Osobowych (PUODO), ul. Stawki 2, 00-193 Warszawa</li>
+</ul>
+
+<h2>6. Odbiorcy danych</h2>
+<p>Dane mogą być udostępniane:</p>
+<ul>
+    <li>Dostawcy hostingu (przechowywanie danych na serwerach)</li>
+    <li>Dostawcy usług analitycznych (Google Analytics) — tylko po wyrażeniu zgody</li>
+    <li>Dostawcy usług reklamowych (Google Ads, Meta) — tylko po wyrażeniu zgody</li>
+    <li>Organy państwowe — jeśli wymaga tego obowiązujące prawo</li>
+</ul>
+
+<h2>7. Przekazywanie danych poza EOG</h2>
+<p>W przypadku korzystania z usług Google (Analytics, Ads) oraz Meta (Pixel), dane mogą być przekazywane do USA. Przekazywanie odbywa się na podstawie standardowych klauzul umownych zatwierdzonych przez Komisję Europejską oraz Data Privacy Framework.</p>
+
+<h2>8. Profilowanie i decyzje automatyczne</h2>
+<p>Administrator nie podejmuje decyzji w sposób wyłącznie zautomatyzowany, w tym profilowania, które wywoływałoby skutki prawne dla użytkownika lub istotnie wpływało na jego sytuację.</p>
+
+<h2>9. Zmiany Polityki prywatności</h2>
+<p>Administrator zastrzega sobie prawo do zmian w niniejszej Polityce prywatności. Aktualna wersja jest zawsze dostępna na tej stronie z podaną datą ostatniej aktualizacji.</p>
+HTML;
+}
+
+function rodoGenerateCookiesPolicy(): string {
+    $siteName = siteName();
+    $cats = rodoGetCategories();
+    $date = date('d.m.Y');
+
+    $catsHtml = '';
+    foreach ($cats as $c) {
+        $catsHtml .= '<h3>' . e($c['name']) . '</h3>';
+        $catsHtml .= '<p>' . e($c['description']) . '</p>';
+        if (!empty($c['examples'])) {
+            $catsHtml .= '<p><strong>Przykłady plików cookies:</strong> ' . e(implode(', ', $c['examples'])) . '</p>';
+        }
+    }
+
+    return <<<HTML
+<p><em>Data ostatniej aktualizacji: {$date}</em></p>
+
+<h2>Czym są pliki cookies?</h2>
+<p>Pliki cookies (tzw. „ciasteczka") to małe pliki tekstowe wysyłane przez serwis internetowy i zapisywane na urządzeniu użytkownika (komputerze, telefonie itp.). Pliki te służą do prawidłowego działania serwisu, statystyki odwiedzin oraz personalizacji treści.</p>
+
+<h2>Jakie cookies wykorzystuje {$siteName}?</h2>
+{$catsHtml}
+
+<h2>Zarządzanie zgodą na cookies</h2>
+<p>Możesz w każdej chwili zmienić lub wycofać swoją zgodę na używanie cookies, klikając ikonę „Zarządzaj zgodą cookies" w prawym dolnym rogu strony.</p>
+
+<h2>Zarządzanie cookies w przeglądarce</h2>
+<p>Możesz również zarządzać plikami cookies bezpośrednio w ustawieniach swojej przeglądarki:</p>
+<ul>
+    <li><a href="https://support.google.com/chrome/answer/95647" target="_blank" rel="noopener">Google Chrome</a></li>
+    <li><a href="https://support.mozilla.org/pl/kb/ciasteczka" target="_blank" rel="noopener">Mozilla Firefox</a></li>
+    <li><a href="https://support.apple.com/pl-pl/guide/safari/sfri11471/mac" target="_blank" rel="noopener">Safari</a></li>
+    <li><a href="https://support.microsoft.com/pl-pl/microsoft-edge/usuwanie-plik%C3%B3w-cookie-w-przegl%C4%85darce-microsoft-edge-63947406-40ac-c3b8-57b9-2a946a29ae09" target="_blank" rel="noopener">Microsoft Edge</a></li>
+</ul>
+
+<h2>Zgody zewnętrzne (Consent Mode)</h2>
+<p>Po wyrażeniu zgody na cookies statystyki i marketingowe, dane mogą być przesyłane do następujących usług:</p>
+<ul>
+    <li><strong>Google</strong> (Analytics, Ads) — <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">polityka prywatności</a></li>
+    <li><strong>Meta</strong> (Facebook Pixel) — <a href="https://www.facebook.com/privacy/policy" target="_blank" rel="noopener">polityka prywatności</a></li>
+</ul>
+HTML;
+}
+
+/**
+ * Tworzy lub aktualizuje stronę o danym slug-u.
+ */
+function rodoUpsertPage(string $slug, string $title, string $content, string $metaDesc = ''): void {
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT id FROM pages WHERE slug = ?');
+    $stmt->execute([$slug]);
+    $row = $stmt->fetch();
+    if ($row) {
+        $upd = $pdo->prepare('UPDATE pages SET title=?, content=?, meta_title=?, meta_description=?, status="published", updated_at=CURRENT_TIMESTAMP WHERE id=?');
+        $upd->execute([$title, $content, $title, $metaDesc, (int)$row['id']]);
+    } else {
+        $ins = $pdo->prepare('INSERT INTO pages (slug, title, content, meta_title, meta_description, status, sort_order) VALUES (?, ?, ?, ?, ?, "published", 100)');
+        $ins->execute([$slug, $title, $content, $title, $metaDesc]);
+    }
+}
+
+/**
  * Renderuje surowy custom-code z ustawień + auto-generowane snippety (GTM, GA4, weryfikacje).
  * Lokacja: 'head' | 'body_start' | 'body_end'.
  * Zwraca HTML bez ucieczki — to jest świadome zachowanie (admin paste).

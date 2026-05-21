@@ -1,0 +1,201 @@
+/* RODO Consent Banner — Cookiebot-style modal, theme-agnostic */
+:root { --rodo-primary: #2540b8; }
+
+.rodo-banner {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #1a1a1a;
+    animation: rodo-fade 0.25s ease;
+}
+@keyframes rodo-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.rodo-banner--bottom { align-items: flex-end; padding-bottom: 1rem; }
+.rodo-banner--top { align-items: flex-start; padding-top: 1rem; }
+.rodo-banner--center { align-items: center; }
+
+.rodo-banner__inner {
+    background: #fff;
+    max-width: 900px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: 8px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Tabs */
+.rodo-banner__tabs {
+    display: flex;
+    border-bottom: 1px solid #e5e7eb;
+}
+.rodo-tab {
+    flex: 1;
+    padding: 1.1rem 1rem;
+    background: transparent;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #6b7280;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.15s, border-color 0.15s;
+}
+.rodo-tab:hover { color: var(--rodo-primary); }
+.rodo-tab.is-active {
+    color: var(--rodo-primary);
+    border-bottom-color: var(--rodo-primary);
+}
+
+/* Panels */
+.rodo-banner__panels {
+    padding: 1.5rem 2rem;
+    overflow-y: auto;
+    flex: 1;
+}
+.rodo-panel { line-height: 1.55; }
+.rodo-banner__title { font-size: 1.1rem; font-weight: 700; margin: 0 0 0.85rem; color: #111; }
+.rodo-banner__text { margin: 0 0 1.25rem; color: #374151; }
+
+/* Toggle grid */
+.rodo-toggles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0;
+    border-top: 1px solid #e5e7eb;
+    border-left: 1px solid #e5e7eb;
+}
+.rodo-toggle {
+    border-right: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.85rem;
+}
+.rodo-toggle__name { font-weight: 700; font-size: 0.95rem; color: #111; }
+.rodo-toggle__switch {
+    position: relative;
+    display: inline-block;
+    width: 56px;
+    height: 28px;
+}
+.rodo-toggle__switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.rodo-toggle__slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: #1a1a1a;
+    border-radius: 999px;
+    transition: background 0.2s;
+}
+.rodo-toggle__slider::before {
+    content: '';
+    position: absolute;
+    height: 22px;
+    width: 22px;
+    left: 3px;
+    top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+.rodo-toggle__switch input:checked + .rodo-toggle__slider { background: var(--rodo-primary); }
+.rodo-toggle__switch input:checked + .rodo-toggle__slider::before { transform: translateX(28px); }
+.rodo-toggle__switch.is-required .rodo-toggle__slider { background: var(--rodo-primary); cursor: not-allowed; opacity: 0.7; }
+.rodo-toggle__switch.is-required .rodo-toggle__slider::before { transform: translateX(28px); }
+
+/* Details panel */
+.rodo-cat {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 0.65rem;
+}
+.rodo-cat > summary { cursor: pointer; display: flex; align-items: center; gap: 0.6rem; font-size: 1rem; }
+.rodo-cat__badge {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.55rem;
+    background: var(--rodo-primary);
+    color: #fff;
+    border-radius: 999px;
+    font-weight: 600;
+}
+.rodo-cat p { margin: 0.6rem 0 0; color: #4b5563; font-size: 0.92rem; }
+.rodo-cat__examples { font-size: 0.85rem; color: #6b7280; }
+
+.rodo-panel a { color: var(--rodo-primary); text-decoration: underline; }
+
+/* Buttons */
+.rodo-banner__buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem 1.25rem;
+    border-top: 1px solid #e5e7eb;
+}
+.rodo-btn {
+    padding: 0.95rem 1.1rem;
+    border: 0;
+    background: var(--rodo-primary);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: opacity 0.15s, transform 0.05s;
+}
+.rodo-btn:hover { opacity: 0.92; }
+.rodo-btn:active { transform: translateY(1px); }
+
+/* Floating "Manage cookies" button */
+.rodo-toggle-btn {
+    position: fixed;
+    bottom: 1.25rem;
+    left: 1.25rem;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--rodo-primary);
+    color: #fff;
+    border: 0;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9998;
+    transition: transform 0.15s;
+}
+.rodo-toggle-btn:hover { transform: scale(1.08); }
+.rodo-toggle-btn[hidden] { display: none !important; }
+
+@media (max-width: 720px) {
+    .rodo-banner__inner { max-height: 95vh; border-radius: 8px 8px 0 0; }
+    .rodo-banner__panels { padding: 1.25rem 1rem; }
+    .rodo-tab { padding: 0.85rem 0.5rem; font-size: 0.88rem; }
+    .rodo-banner__buttons { grid-template-columns: 1fr; padding: 0.85rem 1rem 1rem; }
+    .rodo-toggles { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 420px) {
+    .rodo-toggles { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rodo-banner, .rodo-toggle__slider, .rodo-toggle__slider::before, .rodo-btn { animation: none !important; transition: none !important; }
+}
