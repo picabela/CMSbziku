@@ -51,6 +51,14 @@ $structuredData = [
     'keywords' => $post['meta_keywords'],
 ];
 
+// Speakable — dla voice asystentów (Google Assistant cytuje te fragmenty)
+if (!empty($post['tldr'])) {
+    $structuredData['speakable'] = [
+        '@type' => 'SpeakableSpecification',
+        'cssSelector' => ['.article__title', '.article__tldr p'],
+    ];
+}
+
 $breadcrumbData = [
     '@context' => 'https://schema.org',
     '@type' => 'BreadcrumbList',
@@ -92,15 +100,64 @@ include __DIR__ . '/includes/header.php';
 
     <?php if ($post['featured_image']): ?>
         <figure class="article__hero">
-            <img src="<?= e(UPLOAD_URL . '/' . $post['featured_image']) ?>" alt="<?= e($post['featured_image_alt'] ?: $post['title']) ?>" itemprop="image" width="1200" height="630">
+            <?php
+            $imgFile = $post['featured_image'];
+            $webpFile = preg_replace('/\.[^.]+$/', '.webp', $imgFile);
+            $hasWebp = file_exists(UPLOAD_DIR . '/' . $webpFile);
+            ?>
+            <?php if ($hasWebp): ?>
+                <picture>
+                    <source srcset="<?= e(UPLOAD_URL . '/' . $webpFile) ?>" type="image/webp">
+                    <img src="<?= e(UPLOAD_URL . '/' . $imgFile) ?>" alt="<?= e($post['featured_image_alt'] ?: $post['title']) ?>" itemprop="image" width="1200" height="630" loading="eager">
+                </picture>
+            <?php else: ?>
+                <img src="<?= e(UPLOAD_URL . '/' . $imgFile) ?>" alt="<?= e($post['featured_image_alt'] ?: $post['title']) ?>" itemprop="image" width="1200" height="630" loading="eager">
+            <?php endif; ?>
             <?php if ($post['featured_image_alt']): ?>
                 <figcaption><?= e($post['featured_image_alt']) ?></figcaption>
             <?php endif; ?>
         </figure>
     <?php endif; ?>
 
+    <?php if (!empty($post['tldr'])): ?>
+        <aside class="article__tldr" aria-label="TL;DR — szybkie streszczenie">
+            <span class="article__tldr-label">TL;DR</span>
+            <p><?= e($post['tldr']) ?></p>
+        </aside>
+    <?php endif; ?>
+
+    <?php
+    // Build TOC and add anchor IDs to H2/H3 (jeśli włączone)
+    $tocGlobal = setting('toc_enabled_global', '1') === '1';
+    $tocOverride = $post['show_toc'];
+    $showToc = $tocOverride === null ? $tocGlobal : ((int)$tocOverride === 1);
+    $contentHtml = $post['content'];
+    if ($showToc) {
+        $parsed = buildTocAndAnchors($contentHtml);
+        $contentHtml = $parsed['html'];
+        $toc = $parsed['toc'];
+    } else {
+        $toc = [];
+    }
+    // Auto internal links
+    $contentHtml = applyAutoInternalLinks($contentHtml, (int)$post['id']);
+    ?>
+
+    <?php if ($showToc && count($toc) >= 3): ?>
+        <nav class="article__toc" aria-label="Spis treści">
+            <h2 class="article__toc-title">Spis treści</h2>
+            <ol>
+                <?php foreach ($toc as $item): ?>
+                    <li class="article__toc-item article__toc-item--l<?= (int)$item['level'] ?>">
+                        <a href="#<?= e($item['id']) ?>"><?= e($item['text']) ?></a>
+                    </li>
+                <?php endforeach; ?>
+            </ol>
+        </nav>
+    <?php endif; ?>
+
     <div class="article__content" itemprop="articleBody">
-        <?= $post['content'] ?>
+        <?= $contentHtml ?>
     </div>
 
     <?php $postTags = getPostTags((int)$post['id']); ?>
@@ -141,4 +198,24 @@ include __DIR__ . '/includes/header.php';
     </aside>
 <?php endif; ?>
 
+<?php if (setting('reading_progress_bar', '1') === '1'): ?>
+<div class="reading-progress" id="reading-progress" aria-hidden="true"><div class="reading-progress__bar"></div></div>
+<script>
+(function(){
+    var article = document.querySelector('.article__content');
+    var bar = document.querySelector('.reading-progress__bar');
+    if (!article || !bar) return;
+    function update() {
+        var rect = article.getBoundingClientRect();
+        var total = article.offsetHeight - window.innerHeight + rect.top + window.scrollY;
+        var top = window.scrollY - (rect.top + window.scrollY - 60);
+        var pct = Math.max(0, Math.min(100, (top / Math.max(1, article.offsetHeight - 200)) * 100));
+        bar.style.width = pct + '%';
+    }
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+})();
+</script>
+<?php endif; ?>
 <?php include __DIR__ . '/includes/footer.php';

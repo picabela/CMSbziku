@@ -187,3 +187,111 @@ a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 1p
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
 @media print { .masthead__nav, .site-footer, .pagination, .related { display: none; } body { background: white; } }
+
+/* ============================================================
+   GEO/SEO additions (TL;DR, TOC, reading progress, search, auto-links)
+   Wymagane przez core CMS — nie modyfikuj nazw klas.
+   ============================================================ */
+
+/* TL;DR box — wysokie cytowalne miejsce dla AI */
+.article__tldr {
+    background: var(--paper-bright, #fff);
+    border-left: 4px solid var(--accent, #111);
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0 2rem;
+    font-size: 0.98rem;
+    line-height: 1.55;
+}
+.article__tldr-label {
+    display: inline-block;
+    font-family: var(--sans, sans-serif);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent, #111);
+    font-weight: 700;
+    margin-right: 0.6rem;
+    background: rgba(0,0,0,0.04);
+    padding: 0.15rem 0.55rem;
+    border-radius: 4px;
+}
+.article__tldr p { display: inline; margin: 0; font-style: italic; }
+
+/* TOC — spis treści */
+.article__toc {
+    background: var(--paper-bright, #fff);
+    border: 1px solid var(--rule-soft, #d8d6d2);
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 0 2rem;
+    border-radius: 4px;
+}
+.article__toc-title {
+    font-size: 0.85rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted, #6b6b6b);
+    margin: 0 0 0.75rem !important;
+    font-weight: 600 !important;
+    border-bottom: 1px solid var(--rule-soft, #d8d6d2);
+    padding-bottom: 0.5rem;
+}
+.article__toc ol { margin: 0; padding-left: 1.25rem; list-style: decimal; font-size: 0.95rem; line-height: 1.7; }
+.article__toc-item--l3 { margin-left: 1rem; font-size: 0.9em; list-style: lower-alpha; }
+.article__toc a { color: var(--ink-soft, #2a2a2a); text-decoration: none; }
+.article__toc a:hover { text-decoration: underline; color: var(--accent, #111); }
+@media (min-width: 1100px) {
+    /* Sticky TOC po lewej dla szerokich ekranów - opcjonalne, dostępne dla motywów które chcą */
+}
+
+/* Reading progress bar */
+.reading-progress {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: transparent;
+    z-index: 9999;
+    pointer-events: none;
+}
+.reading-progress__bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent, #c8102e);
+    transition: width 0.05s linear;
+}
+
+/* Search form */
+.search-form {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1.5rem 0 2rem;
+    max-width: 720px;
+}
+.search-form input[type=search] {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--rule, #111);
+    background: var(--paper-bright, #fff);
+    font-family: inherit;
+    font-size: 1rem;
+    color: var(--ink, #111);
+}
+.search-form input[type=search]:focus { outline: 2px solid var(--accent, #111); outline-offset: -1px; }
+.search-form button {
+    padding: 0.75rem 1.5rem;
+    background: var(--ink, #111);
+    color: var(--paper-bright, #fff);
+    border: 0;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+.search-form button:hover { opacity: 0.85; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+/* Auto internal links — drobne wyróżnienie */
+.article__content a.auto-link {
+    border-bottom: 1px dotted currentColor;
+    text-decoration: none;
+}
+.article__content a.auto-link:hover { text-decoration: underline; }

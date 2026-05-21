@@ -86,6 +86,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $flash = ['type' => 'success', 'msg' => 'Custom code zapisany.'];
         }
+
+        if ($section === 'seo_geo') {
+            foreach (['toc_enabled_global','auto_generate_tldr','auto_internal_links','webp_conversion','reading_progress_bar','critical_css_inline'] as $k) {
+                setSetting($k, isset($_POST[$k]) ? '1' : '0');
+            }
+            $flash = ['type' => 'success', 'msg' => 'Ustawienia SEO/GEO zapisane.'];
+        }
     }
 }
 $logoFile = setting('site_logo');
@@ -218,6 +225,36 @@ $logoFile = setting('site_logo');
             <p class="hint">⚠ Wklejony kod jest renderowany 1:1 bez sanityzacji. Wklejaj tylko zaufane snippety od dostawców (Google, Microsoft, Meta).</p>
             <button class="btn btn--primary" type="submit">Zapisz custom code</button>
         </form>
+    </section>
+
+    <section class="settings-card">
+        <h2>🎯 SEO / GEO — optymalizacja pod wyszukiwarki i AI</h2>
+        <form method="post" class="settings-form">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="section" value="seo_geo">
+
+            <label class="checkbox"><input type="checkbox" name="toc_enabled_global" value="1" <?= setting('toc_enabled_global', '1') === '1' ? 'checked' : '' ?>> <strong>Spis treści (TOC)</strong> globalnie dla artykułów</label>
+            <p class="hint">TOC pojawia się tylko gdy artykuł ma ≥3 nagłówków H2/H3. Per-artykuł można nadpisać w edytorze.</p>
+
+            <label class="checkbox"><input type="checkbox" name="auto_generate_tldr" value="1" <?= setting('auto_generate_tldr', '1') === '1' ? 'checked' : '' ?>> <strong>Auto-generuj TL;DR</strong> przez AI przy imporcie</label>
+            <p class="hint">2–3 zdania na początku artykułu (max 280 zn). Optymalizacja pod cytowanie w AI Overviews / Perplexity.</p>
+
+            <label class="checkbox"><input type="checkbox" name="auto_internal_links" value="1" <?= setting('auto_internal_links', '1') === '1' ? 'checked' : '' ?>> <strong>Auto internal linking</strong> — linkuj wzmianki tagów do stron tagów</label>
+            <p class="hint">Wzmacnia crawl Google i sygnały silosa contentowego. Każdy tag linkowany tylko raz / artykuł.</p>
+
+            <label class="checkbox"><input type="checkbox" name="webp_conversion" value="1" <?= setting('webp_conversion', '1') === '1' ? 'checked' : '' ?>> <strong>Auto-konwersja WebP</strong> przy uploadzie obrazów</label>
+            <p class="hint">Średnio 40% mniej KB → lepsze Core Web Vitals. Wymaga PHP-GD z obsługą WebP. <?= function_exists('imagewebp') ? '<strong style="color:green">✓ dostępne</strong>' : '<strong style="color:red">✗ niedostępne</strong>' ?></p>
+
+            <label class="checkbox"><input type="checkbox" name="reading_progress_bar" value="1" <?= setting('reading_progress_bar', '1') === '1' ? 'checked' : '' ?>> <strong>Reading progress bar</strong> na stronach artykułów</label>
+            <p class="hint">Pasek na górze pokazujący scroll. Micro-engagement signal — pomaga w Web Vitals.</p>
+
+            <label class="checkbox"><input type="checkbox" name="critical_css_inline" value="1" <?= setting('critical_css_inline', '1') === '1' ? 'checked' : '' ?>> <strong>Inline critical CSS</strong> (jeśli motyw dostarcza)</label>
+            <p class="hint">Jeśli motyw ma plik <code>critical.css</code>, wstrzykujemy go inline w &lt;head&gt; dla LCP &lt;1s.</p>
+
+            <button class="btn btn--primary" type="submit">Zapisz SEO/GEO</button>
+        </form>
+        <p class="hint" style="margin-top:1rem">📄 <a href="<?= e(BASE_URL) ?>/llms.txt" target="_blank">Twój llms.txt</a> dla crawlerów AI (Anthropic, OpenAI, Perplexity) jest generowany automatycznie.</p>
+        <p class="hint">🔍 <a href="<?= e(BASE_URL) ?>/szukaj" target="_blank">Wyszukiwarka /szukaj</a> — wbudowana, z paginacją i scoringiem (tytuł × 3, excerpt × 2, keywords × 1).</p>
     </section>
 
     <section class="settings-card">

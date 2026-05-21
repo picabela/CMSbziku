@@ -17,6 +17,19 @@ $pageDescription = $categoryName
     : SITE_DESCRIPTION;
 $canonical = $categoryName ? categoryUrl($categoryName) : BASE_URL . '/';
 
+// rel="prev"/"next" dla SEO paginacji
+$paginationBaseUrl = $categoryName ? categoryUrl($categoryName) : BASE_URL . '/';
+$paginationSep = str_contains($paginationBaseUrl, '?') ? '&' : '?';
+$_totalPagesForRel = (int)ceil($total / POSTS_PER_PAGE);
+if ($_totalPagesForRel > 1) {
+    if ($page > 1) {
+        $relPrev = $paginationBaseUrl . ($page - 1 > 1 ? $paginationSep . 'page=' . ($page - 1) : '');
+    }
+    if ($page < $_totalPagesForRel) {
+        $relNext = $paginationBaseUrl . $paginationSep . 'page=' . ($page + 1);
+    }
+}
+
 $structuredData = [
     '@context' => 'https://schema.org',
     '@type' => 'CollectionPage',

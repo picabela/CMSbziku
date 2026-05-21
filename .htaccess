@@ -29,6 +29,12 @@ DirectoryIndex index.php index.html
     # Static pages: /strona/o-nas -> strona.php?slug=o-nas
     RewriteRule ^strona/([a-z0-9-]+)/?$ strona.php?slug=$1 [QSA,L]
 
+    # Search: /szukaj?q=... -> szukaj.php
+    RewriteRule ^szukaj/?$ szukaj.php [QSA,L]
+
+    # llms.txt -> llms.php (dynamiczny)
+    RewriteRule ^llms\.txt$ llms.php [L]
+
     # Skip real files & directories
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d

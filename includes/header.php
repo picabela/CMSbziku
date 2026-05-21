@@ -34,9 +34,46 @@ $ogType = $ogType ?? 'website';
 <link rel="alternate" type="application/rss+xml" title="<?= e(SITE_NAME) ?> RSS" href="<?= e(BASE_URL) ?>/feed.php">
 <link rel="sitemap" type="application/xml" href="<?= e(BASE_URL) ?>/sitemap.xml">
 
+<?php if (!empty($relPrev)): ?><link rel="prev" href="<?= e($relPrev) ?>"><?php endif; ?>
+<?php if (!empty($relNext)): ?><link rel="next" href="<?= e($relNext) ?>"><?php endif; ?>
+
+<!-- Resource hints: preconnect + dns-prefetch dla typowych integracji -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;700&display=swap">
+<?php
+$resourceHints = [];
+if (setting('gtm_id', '') !== '') {
+    $resourceHints[] = 'https://www.googletagmanager.com';
+}
+if (setting('ga4_id', '') !== '') {
+    $resourceHints[] = 'https://www.google-analytics.com';
+}
+if (setting('facebook_pixel_id', '') !== '') {
+    $resourceHints[] = 'https://connect.facebook.net';
+}
+foreach (array_unique($resourceHints) as $h): ?>
+<link rel="dns-prefetch" href="<?= e($h) ?>">
+<link rel="preconnect" href="<?= e($h) ?>" crossorigin>
+<?php endforeach; ?>
+
+<!-- Preload głównego CSS jako fallback dla critical-css optimization -->
+<link rel="preload" as="style" href="<?= e(themeAssetUrl('style.css')) ?>">
+<?php
+// Logo: preload jeśli jest, żeby LCP było szybsze
+$logoUrl = siteLogoUrl();
+if ($logoUrl): ?>
+<link rel="preload" as="image" href="<?= e($logoUrl) ?>" fetchpriority="high">
+<?php endif; ?>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;700&display=swap"></noscript>
+
+<?php
+// Critical CSS — jeśli motyw ma critical.css, inline'ujemy go w head dla szybkiego LCP
+$criticalPath = __DIR__ . '/../themes/' . activeTheme() . '/critical.css';
+if (setting('critical_css_inline', '1') === '1' && file_exists($criticalPath)): ?>
+<style><?= file_get_contents($criticalPath) ?></style>
+<?php endif; ?>
 <link rel="stylesheet" href="<?= e(themeAssetUrl('style.css')) ?>">
 <?= renderThemeColorStyle() ?>
 <link rel="icon" type="image/svg+xml" href="<?= e(BASE_URL) ?>/assets/images/favicon.svg">

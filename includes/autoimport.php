@@ -778,6 +778,8 @@ class AutoImporter {
         $alt = trim($gen['image_alt'] ?? '');
         $keywords = trim($gen['keywords'] ?? '');
         $author = setting('auto_default_author', 'Redakcja AI');
+        $tldr = trim($gen['tldr'] ?? '');
+        if (mb_strlen($tldr) > 320) $tldr = mb_substr($tldr, 0, 320);
 
         $attributionHtml = renderSourceAttribution($item['url'], $source['name']);
         $content .= $attributionHtml;
@@ -796,8 +798,8 @@ class AutoImporter {
         $slug = uniqueSlug(slugify($title));
 
         $stmt = $this->pdo->prepare("
-            INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, source_attribution, published_at)
-            VALUES (:slug, :title, :subtitle, :excerpt, :content, :alt, :cat, :author, :meta_title, :meta_desc, :meta_kw, :status, :attr, :pub)
+            INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, source_attribution, tldr, published_at)
+            VALUES (:slug, :title, :subtitle, :excerpt, :content, :alt, :cat, :author, :meta_title, :meta_desc, :meta_kw, :status, :attr, :tldr, :pub)
         ");
         $stmt->execute([
             ':slug' => $slug,
@@ -813,6 +815,7 @@ class AutoImporter {
             ':meta_kw' => $keywords,
             ':status' => $status,
             ':attr' => $attributionHtml,
+            ':tldr' => $tldr ?: null,
             ':pub' => $publishedAt,
         ]);
         $postId = (int)$this->pdo->lastInsertId();

@@ -93,13 +93,55 @@ function getCategories(): array {
 }
 
 function getRelatedPosts(string $category, int $excludeId, int $limit = 3): array {
+    // Semantic-ish: ranking po wspólnych tagach (Jaccard-like) + boost dla tej samej kategorii.
     $pdo = db();
-    $stmt = $pdo->prepare("SELECT * FROM posts WHERE category = ? AND id != ? AND status = 'published' ORDER BY published_at DESC LIMIT ?");
-    $stmt->bindValue(1, $category);
-    $stmt->bindValue(2, $excludeId, PDO::PARAM_INT);
-    $stmt->bindValue(3, $limit, PDO::PARAM_INT);
+    $tagsStmt = $pdo->prepare('SELECT tag_id FROM post_tags WHERE post_id = ?');
+    $tagsStmt->execute([$excludeId]);
+    $tagIds = array_map(fn($r) => (int)$r['tag_id'], $tagsStmt->fetchAll());
+
+    if (!$tagIds) {
+        // Fallback: tylko kategoria (jak wcześniej)
+        $stmt = $pdo->prepare("SELECT * FROM posts WHERE category = ? AND id != ? AND status = 'published' ORDER BY published_at DESC LIMIT ?");
+        $stmt->bindValue(1, $category);
+        $stmt->bindValue(2, $excludeId, PDO::PARAM_INT);
+        $stmt->bindValue(3, $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    // Punktacja: +1 za każdy wspólny tag, +2 za zgodność kategorii, świeżość jako tie-breaker
+    $placeholders = implode(',', array_fill(0, count($tagIds), '?'));
+    $sql = "
+        SELECT p.*,
+               (SELECT COUNT(*) FROM post_tags pt WHERE pt.post_id = p.id AND pt.tag_id IN ($placeholders)) AS shared_tags,
+               CASE WHEN p.category = ? THEN 2 ELSE 0 END AS cat_match
+        FROM posts p
+        WHERE p.id != ? AND p.status = 'published'
+        HAVING (shared_tags + cat_match) > 0
+        ORDER BY (shared_tags + cat_match) DESC, p.published_at DESC
+        LIMIT ?";
+    $stmt = $pdo->prepare($sql);
+    $i = 1;
+    foreach ($tagIds as $tid) $stmt->bindValue($i++, $tid, PDO::PARAM_INT);
+    $stmt->bindValue($i++, $category);
+    $stmt->bindValue($i++, $excludeId, PDO::PARAM_INT);
+    $stmt->bindValue($i++, $limit, PDO::PARAM_INT);
     $stmt->execute();
-    return $stmt->fetchAll();
+    $rows = $stmt->fetchAll();
+    if (count($rows) >= $limit) return $rows;
+
+    // Dopełnij brakujące świeżymi z tej samej kategorii (jeśli mało wspólnych tagów)
+    $haveIds = array_map(fn($r) => (int)$r['id'], $rows);
+    $excludeIds = array_merge([$excludeId], $haveIds);
+    $need = $limit - count($rows);
+    $ph = implode(',', array_fill(0, count($excludeIds), '?'));
+    $fill = $pdo->prepare("SELECT * FROM posts WHERE category = ? AND id NOT IN ($ph) AND status='published' ORDER BY published_at DESC LIMIT ?");
+    $i = 1;
+    $fill->bindValue($i++, $category);
+    foreach ($excludeIds as $eid) $fill->bindValue($i++, $eid, PDO::PARAM_INT);
+    $fill->bindValue($i++, $need, PDO::PARAM_INT);
+    $fill->execute();
+    return array_merge($rows, $fill->fetchAll());
 }
 
 function formatDate(string $datetime): string {
@@ -507,6 +549,122 @@ function renderThemeColorStyle(): string {
         $rules[] = $var . ': ' . $val . ';';
     }
     return '<style id="theme-colors">:root { ' . implode(' ', $rules) . ' }</style>';
+}
+
+/**
+ * Auto-generuje ID dla każdego <h2>/<h3> w treści (jeśli brak),
+ * zwraca tablicę pozycji TOC + zmodyfikowany HTML z dodanymi id-kami.
+ * Zwraca ['html' => ..., 'toc' => [['level' => 2, 'id' => 'slug', 'text' => 'Tekst nagłówka']]]
+ */
+function buildTocAndAnchors(string $html): array {
+    $toc = [];
+    $usedIds = [];
+    $html = preg_replace_callback(
+        '#<(h[23])\b([^>]*)>(.*?)</\1>#si',
+        function($m) use (&$toc, &$usedIds) {
+            $tag = $m[1];
+            $attrs = $m[2];
+            $inner = $m[3];
+            $text = trim(html_entity_decode(strip_tags($inner), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($text === '') return $m[0];
+
+            // Istniejący id w atrybutach?
+            $id = null;
+            if (preg_match('/\bid=["\']([^"\']+)["\']/i', $attrs, $idm)) {
+                $id = $idm[1];
+            }
+            if (!$id) {
+                $base = slugify($text);
+                if (!$base) $base = 'sec-' . count($toc);
+                $id = $base;
+                $i = 2;
+                while (in_array($id, $usedIds, true)) {
+                    $id = $base . '-' . $i++;
+                }
+                $attrs .= ' id="' . htmlspecialchars($id, ENT_QUOTES) . '"';
+            }
+            $usedIds[] = $id;
+            $toc[] = ['level' => (int)substr($tag, 1), 'id' => $id, 'text' => $text];
+            return '<' . $tag . $attrs . '>' . $inner . '</' . $tag . '>';
+        },
+        $html
+    );
+    return ['html' => $html, 'toc' => $toc];
+}
+
+/**
+ * Auto internal linking: skanuje plaintextowe fragmenty HTML i linkuje
+ * wystąpienia nazw tagów (do strony tagu). Pomija fragmenty wewnątrz
+ * istniejących <a>, headings, code, pre.
+ */
+function applyAutoInternalLinks(string $html, int $excludePostId = 0): string {
+    if (setting('auto_internal_links', '1') !== '1') return $html;
+    $tags = db()->query('SELECT name, slug FROM tags WHERE usage_count > 0')->fetchAll();
+    if (!$tags) return $html;
+
+    // Posortuj od najdłuższych — chcemy "Microsoft Edge" zamatchować przed "Microsoft"
+    usort($tags, fn($a, $b) => mb_strlen($b['name']) - mb_strlen($a['name']));
+
+    // Maska: zamieniamy chronione bloki na placeholdery, robimy replace, przywracamy.
+    $blocks = [];
+    $idx = 0;
+    $masked = preg_replace_callback(
+        '#<(a|h1|h2|h3|h4|code|pre)\b[^>]*>.*?</\1>#si',
+        function($m) use (&$blocks, &$idx) {
+            $key = "\0BLOCK{$idx}\0";
+            $blocks[$key] = $m[0];
+            $idx++;
+            return $key;
+        },
+        $html
+    );
+
+    $linkedTags = [];  // każdy tag linkujemy tylko raz na artykuł
+    foreach ($tags as $tag) {
+        if (in_array($tag['slug'], $linkedTags, true)) continue;
+        $name = $tag['name'];
+        $pattern = '/(?<![\p{L}\p{N}\-_])(' . preg_quote($name, '/') . ')(?![\p{L}\p{N}\-_])/u';
+        $replaced = preg_replace_callback($pattern, function($m) use ($tag, &$linkedTags) {
+            if (in_array($tag['slug'], $linkedTags, true)) return $m[1];
+            $linkedTags[] = $tag['slug'];
+            return '<a href="' . htmlspecialchars(tagUrl($tag['slug']), ENT_QUOTES)
+                 . '" class="auto-link" data-tag="' . htmlspecialchars($tag['slug'], ENT_QUOTES) . '">' . $m[1] . '</a>';
+        }, $masked, 1);
+        if ($replaced !== null) $masked = $replaced;
+    }
+
+    foreach ($blocks as $key => $orig) {
+        $masked = str_replace($key, $orig, $masked);
+    }
+    return $masked;
+}
+
+/**
+ * Auto-konwersja obrazu do WebP. Zwraca nazwę pliku .webp obok oryginału, lub null.
+ * Wymaga GD z obsługą WebP (PHP >= 7.0).
+ */
+function convertImageToWebp(string $sourcePath, int $quality = 82): ?string {
+    if (setting('webp_conversion', '1') !== '1') return null;
+    if (!function_exists('imagewebp')) return null;
+    if (!is_file($sourcePath)) return null;
+
+    $info = @getimagesize($sourcePath);
+    if (!$info) return null;
+    $mime = $info['mime'] ?? '';
+    $img = null;
+    switch ($mime) {
+        case 'image/jpeg': $img = @imagecreatefromjpeg($sourcePath); break;
+        case 'image/png':  $img = @imagecreatefrompng($sourcePath);
+            if ($img) { imagepalettetotruecolor($img); imagealphablending($img, true); imagesavealpha($img, true); }
+            break;
+        case 'image/gif':  $img = @imagecreatefromgif($sourcePath); break;
+        default: return null;  // svg, webp już — pomijamy
+    }
+    if (!$img) return null;
+    $webpPath = preg_replace('/\.[^.]+$/', '.webp', $sourcePath);
+    $ok = @imagewebp($img, $webpPath, $quality);
+    imagedestroy($img);
+    return $ok ? basename($webpPath) : null;
 }
 
 /**

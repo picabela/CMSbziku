@@ -23,6 +23,15 @@ $pageTitle = $label . ': ' . $tag['name'] . ' — ' . siteName();
 $pageDescription = 'Artykuły otagowane „' . $tag['name'] . '" w ' . siteName() . '.';
 $canonical = tagUrl($tag['slug']);
 
+if ($totalPages > 1) {
+    if ($page > 1) {
+        $relPrev = tagUrl($tag['slug']) . ($page - 1 > 1 ? '?page=' . ($page - 1) : '');
+    }
+    if ($page < $totalPages) {
+        $relNext = tagUrl($tag['slug']) . '?page=' . ($page + 1);
+    }
+}
+
 include __DIR__ . '/includes/header.php';
 ?>
 

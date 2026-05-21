@@ -178,6 +178,8 @@ function initSchema(PDO $pdo): void {
     addColumnIfMissing($pdo, 'sources', 'max_age_days', "INTEGER");
     addColumnIfMissing($pdo, 'auto_runs', 'items_enqueued', "INTEGER DEFAULT 0");
     addColumnIfMissing($pdo, 'posts', 'source_attribution', "TEXT");
+    addColumnIfMissing($pdo, 'posts', 'tldr', "TEXT");
+    addColumnIfMissing($pdo, 'posts', 'show_toc', "INTEGER");  // NULL = global, 0/1 = override
 
     // Seed domyślnych kategorii (jeśli pusto)
     if ((int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn() === 0) {
@@ -207,7 +209,7 @@ function initSchema(PDO $pdo): void {
         'auto_target_language' => 'pl',
         'auto_default_category' => 'Aktualności',
         'auto_default_author' => 'Redakcja AI',
-        'auto_prompt' => "Jesteś dziennikarzem branżowym piszącym po polsku dla minimalistycznej gazety online o SEO, GEO, reklamie cyfrowej (ADS) i AI.\n\nNa podstawie poniższego artykułu źródłowego napisz oryginalne, ciekawe streszczenie po polsku — w formie samodzielnego newsa redakcyjnego, nie kopiując zdań ze źródła. Tekst powinien:\n- mieć ok. 300–500 słów,\n- być zwięzły, informacyjny i konkretny,\n- używać prostego języka, krótkich akapitów <p>,\n- zawierać 1-2 śródtytuły <h2> oraz listę <ul> jeśli to naturalne,\n- nie zaczynać od „W artykule…\", „Według…\" — pisz wprost,\n- na końcu dodać akapit „Dlaczego to ważne\" w 2-3 zdaniach.\n\nZwróć WYŁĄCZNIE poprawny JSON o strukturze:\n{\n  \"title\": \"chwytliwy tytuł po polsku, max 80 znaków\",\n  \"subtitle\": \"krótki podtytuł po polsku, max 140 znaków\",\n  \"excerpt\": \"zajawka 1-2 zdania po polsku, max 220 znaków\",\n  \"content\": \"treść w prostym HTML (<p>, <h2>, <ul>, <li>, <strong>, <em>, <blockquote>)\",\n  \"category\": \"jedna z: SEO, GEO, ADS, AI, Aktualności\",\n  \"keywords\": \"5-7 słów kluczowych po polsku, przecinki\",\n  \"image_alt\": \"opis sugerowanego obrazu po polsku, max 120 znaków\",\n  \"tags\": [\"tablica nazw firm/marek/produktów występujących w tekście, max 3\"]\n}",
+        'auto_prompt' => "Jesteś dziennikarzem branżowym piszącym po polsku dla minimalistycznej gazety online o SEO, GEO, reklamie cyfrowej (ADS) i AI.\n\nNa podstawie poniższego artykułu źródłowego napisz oryginalne, ciekawe streszczenie po polsku — w formie samodzielnego newsa redakcyjnego, nie kopiując zdań ze źródła. Tekst powinien:\n- mieć ok. 300–500 słów,\n- być zwięzły, informacyjny i konkretny,\n- używać prostego języka, krótkich akapitów <p>,\n- zawierać 1-2 śródtytuły <h2> oraz listę <ul> jeśli to naturalne,\n- nie zaczynać od „W artykule…\", „Według…\" — pisz wprost,\n- na końcu dodać akapit „Dlaczego to ważne\" w 2-3 zdaniach.\n\nZwróć WYŁĄCZNIE poprawny JSON o strukturze:\n{\n  \"title\": \"chwytliwy tytuł po polsku, max 80 znaków\",\n  \"subtitle\": \"krótki podtytuł po polsku, max 140 znaków\",\n  \"excerpt\": \"zajawka 1-2 zdania po polsku, max 220 znaków\",\n  \"content\": \"treść w prostym HTML (<p>, <h2>, <ul>, <li>, <strong>, <em>, <blockquote>)\",\n  \"category\": \"jedna z: SEO, GEO, ADS, AI, Aktualności\",\n  \"keywords\": \"5-7 słów kluczowych po polsku, przecinki\",\n  \"image_alt\": \"opis sugerowanego obrazu po polsku, max 120 znaków\",\n  \"tags\": [\"tablica nazw firm/marek/produktów występujących w tekście, max 3\"],\n  \"tldr\": \"2-3 zdania streszczenia (TL;DR) na sam początek — kluczowy fakt + dlaczego ważne, do 280 znaków, idealne do cytowania przez AI\"\n}",
         'auto_last_run' => '',
         // Tożsamość strony — edytowalne z panelu (nadpisują stałe z config.php)
         'site_name' => '',
@@ -252,6 +254,13 @@ function initSchema(PDO $pdo): void {
         'footer_menu_items' => '',
         // Per-theme color overrides — JSON {slug: {var: value}}
         'theme_color_overrides' => '',
+        // GEO/SEO
+        'toc_enabled_global' => '1',
+        'auto_generate_tldr' => '1',
+        'auto_internal_links' => '1',
+        'webp_conversion' => '1',
+        'reading_progress_bar' => '1',
+        'critical_css_inline' => '1',
     ];
     $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach ($defaults as $k => $v) $stmt->execute([$k, $v]);
