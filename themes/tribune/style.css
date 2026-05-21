@@ -260,3 +260,22 @@ a:hover { color: var(--ink); }
     text-decoration: none;
 }
 .article__content a.auto-link:hover { text-decoration: underline; }
+
+/* ============================================================
+   Mobile hamburger fix — nie nakładaj na masthead__top
+   ============================================================ */
+@media (max-width: 720px) {
+    .masthead__edition { display: none !important; }
+    .masthead__top { padding-right: 5.5rem !important; }
+    .masthead__menu-toggle {
+        top: 0.6rem !important;
+        right: 0.75rem !important;
+        padding: 0.4rem 0.7rem !important;
+        font-size: 0.7rem !important;
+    }
+}
+@media (max-width: 480px) {
+    .masthead__top { padding-right: 5rem !important; font-size: 0.62rem !important; }
+    .masthead__menu-toggle { font-size: 0.65rem !important; padding: 0.35rem 0.55rem !important; }
+    .masthead__menu-label { display: none; }
+}

@@ -5,6 +5,16 @@ DirectoryIndex index.php index.html
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # ====== Kanoniczna domena ======
+    # 1) Force HTTPS (jeśli nie jest aktywne — odkomentuj gdy SSL skonfigurowany)
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+    # 2) Force without "www." (kanoniczna domena bez www)
+    RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+    RewriteRule ^(.*)$ https://%1/$1 [R=301,L]
+
     # Force trailing slash off (canonical URLs)
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^(.+)/$ /$1 [R=301,L]
@@ -14,8 +24,14 @@ DirectoryIndex index.php index.html
     RewriteRule ^data/ - [F,L]
     RewriteRule ^bin/ - [F,L]
 
+    # robots.txt -> robots.php (dynamiczny z absolute Sitemap URL)
+    RewriteRule ^robots\.txt$ robots.php [L]
+
     # sitemap.xml -> sitemap.php
     RewriteRule ^sitemap\.xml$ sitemap.php [L]
+
+    # llms.txt -> llms.php (dynamiczny)
+    RewriteRule ^llms\.txt$ llms.php [L]
 
     # /kontakt -> kontakt.php
     RewriteRule ^kontakt/?$ kontakt.php [L]
@@ -31,9 +47,6 @@ DirectoryIndex index.php index.html
 
     # Search: /szukaj?q=... -> szukaj.php
     RewriteRule ^szukaj/?$ szukaj.php [QSA,L]
-
-    # llms.txt -> llms.php (dynamiczny)
-    RewriteRule ^llms\.txt$ llms.php [L]
 
     # Skip real files & directories
     RewriteCond %{REQUEST_FILENAME} -f [OR]

@@ -38,6 +38,11 @@ if (preg_match('#^/llms\.txt$#', $uri)) {
     return true;
 }
 
+if (preg_match('#^/robots\.txt$#', $uri)) {
+    require __DIR__ . '/robots.php';
+    return true;
+}
+
 if (preg_match('#^/tag/([a-z0-9-]+)/?$#', $uri, $m)) {
     $_GET['tag'] = $m[1];
     require __DIR__ . '/tag.php';
