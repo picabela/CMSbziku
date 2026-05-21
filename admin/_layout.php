@@ -18,11 +18,15 @@ $adminTitle = $adminTitle ?? 'Panel redakcji';
         <nav class="admin-nav">
             <a href="index.php">Artykuły</a>
             <a href="edit.php">Nowy</a>
+            <a href="pages.php">Strony</a>
+            <a href="menu.php">Menu</a>
             <a href="categories.php">Kategorie</a>
             <a href="tags.php"><?= e(tagLabel()) ?></a>
             <a href="sources.php">Źródła</a>
             <a href="queue.php">Kolejka</a>
             <a href="auto.php">Auto-import</a>
+            <a href="themes.php">Motywy</a>
+            <a href="rodo.php">RODO</a>
             <a href="export.php">Eksport/Import</a>
             <a href="settings.php">Ustawienia</a>
             <a href="<?= e(BASE_URL) ?>/" target="_blank" rel="noopener">Strona ↗</a>

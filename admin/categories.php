@@ -23,6 +23,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
         $_SESSION['flash'] = ['type' => 'success', 'msg' => count($ids) . ' kategorii usuniętych.'];
         header('Location: categories.php'); exit;
     }
+
+    if ($action === 'bulk_add') {
+        $lines = preg_split('/\r\n|\r|\n/', $_POST['bulk_input'] ?? '');
+        $added = 0; $skipped = 0;
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') continue;
+            // Format: Nazwa | opis (opcjonalny)
+            $name = $line; $desc = '';
+            if (str_contains($line, '|')) [$name, $desc] = array_map('trim', explode('|', $line, 2));
+            if ($name === '' || mb_strlen($name) > 80) { $skipped++; continue; }
+            $slug = slugify($name);
+            $check = $pdo->prepare('SELECT id FROM categories WHERE slug = ? OR name = ?');
+            $check->execute([$slug, $name]);
+            if ($check->fetch()) { $skipped++; continue; }
+            try {
+                $pdo->prepare('INSERT INTO categories (name, slug, description, sort_order) VALUES (?, ?, ?, ?)')
+                    ->execute([$name, $slug, $desc, 1000]);
+                $added++;
+            } catch (Throwable $e) {
+                $skipped++;
+            }
+        }
+        $_SESSION['flash'] = ['type' => $added ? 'success' : 'error', 'msg' => "Dodano: {$added}, pominięto (duplikaty/błędy): {$skipped}."];
+        header('Location: categories.php'); exit;
+    }
 }
 
 $cats = db()->query('SELECT c.*, (SELECT COUNT(*) FROM posts p WHERE p.category = c.name) AS post_count FROM categories c ORDER BY sort_order, name')->fetchAll();
@@ -34,6 +60,18 @@ $cats = db()->query('SELECT c.*, (SELECT COUNT(*) FROM posts p WHERE p.category 
     </div>
     <?php if ($flash): ?><div class="flash flash--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
     <p class="hint">Kategorie definiują, gdzie AI może umieścić wygenerowany artykuł. Opis pomaga modelowi trafniej klasyfikować.</p>
+
+    <details class="settings-card">
+        <summary><strong>+ Hurtowe dodawanie kategorii</strong> <span class="muted">(jedna na wiersz)</span></summary>
+        <form method="post" class="settings-form" style="margin-top:1rem">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="action" value="bulk_add">
+            <label>Lista (jedna na wiersz, opcjonalnie <code>Nazwa | opis</code>)
+                <textarea name="bulk_input" rows="8" placeholder="Polityka | Wiadomości polityczne&#10;Sport&#10;Technologia | Newsy z branży IT&#10;# komentarze ignorowane"></textarea>
+            </label>
+            <button type="submit" class="btn btn--primary">Dodaj wszystkie</button>
+        </form>
+    </details>
 
     <?php if (empty($cats)): ?>
         <p class="empty">Brak kategorii. <a href="category-edit.php">Dodaj pierwszą</a>.</p>

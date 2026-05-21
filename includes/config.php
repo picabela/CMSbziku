@@ -7,7 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-define('SITE_NAME', 'The Daily Signal');
+define('SITE_NAME', 'bziku CMS');
 define('SITE_TAGLINE', 'Wiadomości ze świata GEO i SEO');
 define('SITE_DESCRIPTION', 'Minimalistyczna gazeta online z najświeższymi wiadomościami ze świata GEO, SEO i marketingu cyfrowego. Zaprojektowana dla czytników ebook i tabletów.');
 define('SITE_LANG', 'pl');

@@ -16,7 +16,7 @@ $ogType = $ogType ?? 'website';
 <link rel="canonical" href="<?= e($canonical) ?>">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
 <meta name="author" content="<?= e(SITE_NAME) ?>">
-<meta name="generator" content="The Daily Signal CMS">
+<meta name="generator" content="bziku CMS">
 
 <meta property="og:site_name" content="<?= e(siteName()) ?>">
 <meta property="og:title" content="<?= e($pageTitle) ?>">
@@ -34,10 +34,48 @@ $ogType = $ogType ?? 'website';
 <link rel="alternate" type="application/rss+xml" title="<?= e(SITE_NAME) ?> RSS" href="<?= e(BASE_URL) ?>/feed.php">
 <link rel="sitemap" type="application/xml" href="<?= e(BASE_URL) ?>/sitemap.xml">
 
+<?php if (!empty($relPrev)): ?><link rel="prev" href="<?= e($relPrev) ?>"><?php endif; ?>
+<?php if (!empty($relNext)): ?><link rel="next" href="<?= e($relNext) ?>"><?php endif; ?>
+
+<!-- Resource hints: preconnect + dns-prefetch dla typowych integracji -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="<?= e(BASE_URL) ?>/assets/css/style.css">
+<?php
+$resourceHints = [];
+if (setting('gtm_id', '') !== '') {
+    $resourceHints[] = 'https://www.googletagmanager.com';
+}
+if (setting('ga4_id', '') !== '') {
+    $resourceHints[] = 'https://www.google-analytics.com';
+}
+if (setting('facebook_pixel_id', '') !== '') {
+    $resourceHints[] = 'https://connect.facebook.net';
+}
+foreach (array_unique($resourceHints) as $h): ?>
+<link rel="dns-prefetch" href="<?= e($h) ?>">
+<link rel="preconnect" href="<?= e($h) ?>" crossorigin>
+<?php endforeach; ?>
+
+<!-- Preload głównego CSS jako fallback dla critical-css optimization -->
+<link rel="preload" as="style" href="<?= e(themeAssetUrl('style.css')) ?>">
+<?php
+// Logo: preload jeśli jest, żeby LCP było szybsze
+$logoUrl = siteLogoUrl();
+if ($logoUrl): ?>
+<link rel="preload" as="image" href="<?= e($logoUrl) ?>" fetchpriority="high">
+<?php endif; ?>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;700&display=swap"></noscript>
+
+<?php
+// Critical CSS — jeśli motyw ma critical.css, inline'ujemy go w head dla szybkiego LCP
+$criticalPath = __DIR__ . '/../themes/' . activeTheme() . '/critical.css';
+if (setting('critical_css_inline', '1') === '1' && file_exists($criticalPath)): ?>
+<style><?= file_get_contents($criticalPath) ?></style>
+<?php endif; ?>
+<link rel="stylesheet" href="<?= e(themeAssetUrl('style.css')) ?>">
+<?= renderThemeColorStyle() ?>
 <link rel="icon" type="image/svg+xml" href="<?= e(BASE_URL) ?>/assets/images/favicon.svg">
 
 <?php if (!empty($structuredData)): ?>
@@ -59,8 +97,13 @@ $ogType = $ogType ?? 'website';
     ],
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?>
 </script>
+<!-- RODO Consent Mode v2 — MUSI być przed GTM/GA4/Pixel -->
+<?= rodoConsentModeDefaults() ?>
+<?= renderCustomCode('head') ?>
 </head>
 <body>
+<?= rodoRenderBanner() ?>
+<?= renderCustomCode('body_start') ?>
 <a class="skip-link" href="#main">Przejdź do treści</a>
 <?php if (setting('top_notice_enabled', '1') === '1' && setting('top_notice_text', '')): ?>
 <div class="top-notice" role="note">
@@ -71,7 +114,9 @@ $ogType = $ogType ?? 'website';
 <header class="masthead" role="banner">
     <div class="masthead__top">
         <span class="masthead__date"><?= e(formatDate(date('Y-m-d H:i:s'))) ?></span>
-        <span class="masthead__edition">Wydanie cyfrowe</span>
+        <?php if (setting('masthead_edition_enabled', '1') === '1' && setting('masthead_edition_text', '')): ?>
+            <span class="masthead__edition"><?= e(setting('masthead_edition_text', 'Wydanie cyfrowe')) ?></span>
+        <?php endif; ?>
     </div>
     <div class="masthead__title">
         <a href="<?= e(BASE_URL) ?>/" aria-label="Strona główna">
@@ -87,10 +132,9 @@ $ogType = $ogType ?? 'website';
         <span class="masthead__menu-bars" aria-hidden="true"></span>
         <span class="masthead__menu-label">Menu</span>
     </button>
-    <nav class="masthead__nav" id="primary-nav" aria-label="Kategorie">
-        <a href="<?= e(BASE_URL) ?>/">Wszystkie</a>
-        <?php foreach (getCategories() as $cat): ?>
-            <a href="<?= e(categoryUrl($cat['category'])) ?>"><?= e($cat['category']) ?></a>
+    <nav class="masthead__nav" id="primary-nav" aria-label="Menu główne">
+        <?php foreach (renderMenu('header') as $mi): ?>
+            <a href="<?= e($mi['url']) ?>"><?= e($mi['label']) ?></a>
         <?php endforeach; ?>
     </nav>
 </header>

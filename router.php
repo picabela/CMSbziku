@@ -28,9 +28,35 @@ if (preg_match('#^/kontakt/?$#', $uri)) {
     return true;
 }
 
+if (preg_match('#^/szukaj/?$#', $uri)) {
+    require __DIR__ . '/szukaj.php';
+    return true;
+}
+
+if (preg_match('#^/rate/?$#', $uri)) {
+    require __DIR__ . '/rate.php';
+    return true;
+}
+
+if (preg_match('#^/llms\.txt$#', $uri)) {
+    require __DIR__ . '/llms.php';
+    return true;
+}
+
+if (preg_match('#^/robots\.txt$#', $uri)) {
+    require __DIR__ . '/robots.php';
+    return true;
+}
+
 if (preg_match('#^/tag/([a-z0-9-]+)/?$#', $uri, $m)) {
     $_GET['tag'] = $m[1];
     require __DIR__ . '/tag.php';
+    return true;
+}
+
+if (preg_match('#^/strona/([a-z0-9-]+)/?$#', $uri, $m)) {
+    $_GET['slug'] = $m[1];
+    require __DIR__ . '/strona.php';
     return true;
 }
 

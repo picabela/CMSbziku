@@ -23,6 +23,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $slugInput = trim($_POST['slug'] ?? '');
         $status = $_POST['status'] ?? 'published';
         $publishedAt = $_POST['published_at'] ?? date('Y-m-d H:i:s');
+        $tldr = trim($_POST['tldr'] ?? '');
+        if (mb_strlen($tldr) > 320) $tldr = mb_substr($tldr, 0, 320);
+        $showTocInput = $_POST['show_toc'] ?? 'global';
+        $showToc = $showTocInput === 'yes' ? 1 : ($showTocInput === 'no' ? 0 : null);
 
         if ($title === '') $errors[] = 'Tytuł jest wymagany.';
         if ($content === '') $errors[] = 'Treść jest wymagana.';
@@ -41,6 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $filename = uniqid('img_', true) . '.' . $ext;
                 if (move_uploaded_file($f['tmp_name'], UPLOAD_DIR . '/' . $filename)) {
                     $featuredImage = $filename;
+                    // Auto-konwersja do WebP (silent fail jeśli GD bez WebP / SVG)
+                    @convertImageToWebp(UPLOAD_DIR . '/' . $filename);
                 } else {
                     $errors[] = 'Błąd zapisu pliku.';
                 }
@@ -58,13 +64,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $slug = uniqueSlug($slugBase, $post['id'] ?? null);
             $pdo = db();
             if ($post) {
-                $stmt = $pdo->prepare("UPDATE posts SET slug=?, title=?, subtitle=?, excerpt=?, content=?, featured_image=?, featured_image_alt=?, category=?, author=?, meta_title=?, meta_description=?, meta_keywords=?, status=?, published_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?");
-                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, $publishedAt, $post['id']]);
+                $stmt = $pdo->prepare("UPDATE posts SET slug=?, title=?, subtitle=?, excerpt=?, content=?, featured_image=?, featured_image_alt=?, category=?, author=?, meta_title=?, meta_description=?, meta_keywords=?, status=?, tldr=?, show_toc=?, published_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?");
+                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt, $post['id']]);
                 attachTagsToPost((int)$post['id'], $tagNames);
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł zapisany.'];
             } else {
-                $stmt = $pdo->prepare("INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, $publishedAt]);
+                $stmt = $pdo->prepare("INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, tldr, show_toc, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt]);
                 $newId = (int)$pdo->lastInsertId();
                 attachTagsToPost($newId, $tagNames);
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł utworzony.'];
@@ -103,11 +109,15 @@ $existingTagsCsv = implode(', ', array_map(fn($t) => $t['name'], $existingTags))
                 <label>Zajawka (excerpt)
                     <textarea name="excerpt" rows="3" placeholder="Krótkie streszczenie wyświetlane na listach"><?= e($post['excerpt'] ?? '') ?></textarea>
                 </label>
-                <label>Treść
+                <label>TL;DR (2–3 zdania, max 280 zn — wyświetlane na górze artykułu, optymalizacja pod cytowanie przez AI)
+                    <textarea name="tldr" rows="2" maxlength="320" placeholder="Kluczowy fakt + dlaczego ważne. AI generuje to automatycznie przy auto-importcie."><?= e($post['tldr'] ?? '') ?></textarea>
+                </label>
+                <div class="editor-form__field">
+                    <span class="editor-form__label">Treść</span>
                     <div id="editor-toolbar"></div>
                     <div id="editor"><?= $post['content'] ?? '' ?></div>
                     <textarea name="content" id="content-hidden" hidden><?= e($post['content'] ?? '') ?></textarea>
-                </label>
+                </div>
             </div>
 
             <aside class="editor-form__side">
@@ -121,6 +131,15 @@ $existingTagsCsv = implode(', ', array_map(fn($t) => $t['name'], $existingTags))
                     </label>
                     <label>Data publikacji
                         <input type="datetime-local" name="published_at" value="<?= e(date('Y-m-d\TH:i', strtotime($post['published_at'] ?? 'now'))) ?>">
+                    </label>
+                    <label>Spis treści (TOC)
+                        <?php $tocCurrent = $post['show_toc'] ?? null; ?>
+                        <select name="show_toc">
+                            <option value="global" <?= $tocCurrent === null ? 'selected' : '' ?>>Globalne ustawienie (<?= setting('toc_enabled_global', '1') === '1' ? 'TAK' : 'NIE' ?>)</option>
+                            <option value="yes" <?= (int)$tocCurrent === 1 ? 'selected' : '' ?>>Wymuś: pokaż TOC</option>
+                            <option value="no" <?= $tocCurrent !== null && (int)$tocCurrent === 0 ? 'selected' : '' ?>>Wymuś: ukryj TOC</option>
+                        </select>
+                        <small class="hint">TOC pojawia się tylko gdy artykuł ma ≥3 nagłówków H2/H3.</small>
                     </label>
                     <button type="submit" class="btn btn--primary btn--block">Zapisz artykuł</button>
                 </fieldset>

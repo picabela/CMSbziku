@@ -1,0 +1,19 @@
+{
+    "name": "Bulletin",
+    "slug": "bulletin",
+    "version": "1.0.0",
+    "author": "bziku CMS",
+    "description": "Telegraf newsowy. Wąska kolumna treści, monospace nagłówki, żółty pasek pilnych wiadomości. Inspiracja: dawne dziennikarstwo radiowe i depesze prasowe.",
+    "tags": ["newsroom", "telegraph", "monospace", "narrow", "compact"],
+    "supports": ["dark-mode", "responsive", "hamburger-menu", "tag-cloud"],
+    "preview_color": "#222222",
+    "screenshot": "screenshot.svg",
+    "fonts": ["IBM Plex Mono", "IBM Plex Serif", "Inter"],
+    "customizable_colors": [
+        {"var": "--ink", "label": "Tekst główny", "default": "#1c1c1c"},
+        {"var": "--paper", "label": "Tło strony", "default": "#f5f3ee"},
+        {"var": "--paper-bright", "label": "Tło treści", "default": "#fff"},
+        {"var": "--accent", "label": "Akcent (URGENT)", "default": "#d4a017"},
+        {"var": "--muted", "label": "Tekst poboczny", "default": "#6c6660"}
+    ]
+}

@@ -1,9 +1,19 @@
-# The Daily Signal — friendly URLs and security
+# bziku CMS — friendly URLs and security
 Options -Indexes
 DirectoryIndex index.php index.html
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
+
+    # ====== Kanoniczna domena ======
+    # 1) Force HTTPS (jeśli nie jest aktywne — odkomentuj gdy SSL skonfigurowany)
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+    # 2) Force without "www." (kanoniczna domena bez www)
+    RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+    RewriteRule ^(.*)$ https://%1/$1 [R=301,L]
 
     # Force trailing slash off (canonical URLs)
     RewriteCond %{REQUEST_FILENAME} !-d
@@ -14,14 +24,32 @@ DirectoryIndex index.php index.html
     RewriteRule ^data/ - [F,L]
     RewriteRule ^bin/ - [F,L]
 
+    # robots.txt -> robots.php (dynamiczny z absolute Sitemap URL)
+    RewriteRule ^robots\.txt$ robots.php [L]
+
     # sitemap.xml -> sitemap.php
     RewriteRule ^sitemap\.xml$ sitemap.php [L]
+
+    # llms.txt -> llms.php (dynamiczny)
+    RewriteRule ^llms\.txt$ llms.php [L]
 
     # /kontakt -> kontakt.php
     RewriteRule ^kontakt/?$ kontakt.php [L]
 
     # Category pages: /kategoria/seo  -> index.php?kategoria=seo
     RewriteRule ^kategoria/([a-z0-9-]+)/?$ index.php?kategoria=$1 [QSA,L]
+
+    # Tag pages: /tag/google -> tag.php?tag=google
+    RewriteRule ^tag/([a-z0-9-]+)/?$ tag.php?tag=$1 [QSA,L]
+
+    # Static pages: /strona/o-nas -> strona.php?slug=o-nas
+    RewriteRule ^strona/([a-z0-9-]+)/?$ strona.php?slug=$1 [QSA,L]
+
+    # Search: /szukaj?q=... -> szukaj.php
+    RewriteRule ^szukaj/?$ szukaj.php [QSA,L]
+
+    # AJAX rating endpoint
+    RewriteRule ^rate/?$ rate.php [L]
 
     # Skip real files & directories
     RewriteCond %{REQUEST_FILENAME} -f [OR]

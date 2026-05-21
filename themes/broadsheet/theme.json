@@ -1,0 +1,19 @@
+{
+    "name": "Broadsheet",
+    "slug": "broadsheet",
+    "version": "1.0.0",
+    "author": "bziku CMS",
+    "description": "Klasyczna duża gazeta typu Wall Street Journal — wielokolumnowy układ, słownikowe nagłówki, kremowe tło, ozdobne ozdoby z drop cap.",
+    "tags": ["newspaper", "broadsheet", "elegant", "classic", "columns"],
+    "supports": ["dark-mode", "responsive", "hamburger-menu", "tag-cloud", "drop-cap"],
+    "preview_color": "#3a2818",
+    "screenshot": "screenshot.svg",
+    "fonts": ["EB Garamond", "Crimson Pro", "Inter"],
+    "customizable_colors": [
+        {"var": "--ink", "label": "Tekst główny", "default": "#1a1410"},
+        {"var": "--paper", "label": "Tło", "default": "#f4ede0"},
+        {"var": "--paper-bright", "label": "Tło treści", "default": "#fbf7ec"},
+        {"var": "--accent", "label": "Akcent", "default": "#7a1f1f"},
+        {"var": "--muted", "label": "Tekst poboczny", "default": "#6e5b46"}
+    ]
+}

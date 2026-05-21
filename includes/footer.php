@@ -1,31 +1,76 @@
 </main>
 <footer class="site-footer" role="contentinfo">
     <div class="site-footer__inner">
-        <div class="site-footer__col">
+        <div class="site-footer__col site-footer__col--brand">
             <h2 class="site-footer__title"><?= e(siteName()) ?></h2>
             <p><?= e(siteTagline()) ?></p>
+
+            <form class="footer-search" method="get" action="<?= e(BASE_URL) ?>/szukaj" role="search">
+                <label class="footer-search__label" for="footer-search-input">Szukaj na stronie</label>
+                <div class="footer-search__field">
+                    <svg class="footer-search__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input type="search" id="footer-search-input" name="q" placeholder="Wpisz frazę…" minlength="2" required autocomplete="off">
+                    <button type="submit" aria-label="Szukaj">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+            </form>
+
+            <ul class="site-footer__links">
+                <?php $footerMenu = getMenuItems('footer'); ?>
+                <?php if ($footerMenu): ?>
+                    <?php foreach (renderMenu('footer', false) as $mi): ?>
+                        <li><a href="<?= e($mi['url']) ?>"><?= e($mi['label']) ?></a></li>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <?php if (setting('contact_enabled', '1') === '1'): ?>
+                        <li><a href="<?= e(BASE_URL) ?>/kontakt">Kontakt</a></li>
+                    <?php endif; ?>
+                    <li><a href="<?= e(BASE_URL) ?>/sitemap.xml">Mapa strony</a></li>
+                    <li><a href="<?= e(BASE_URL) ?>/feed.php">RSS</a></li>
+                    <li><a href="<?= e(BASE_URL) ?>/admin/login.php">Panel redakcji</a></li>
+                <?php endif; ?>
+            </ul>
         </div>
+
         <div class="site-footer__col">
             <h3>Kategorie</h3>
-            <ul>
-                <?php foreach (getCategories() as $cat): ?>
-                    <li><a href="<?= e(categoryUrl($cat['category'])) ?>"><?= e($cat['category']) ?> (<?= (int)$cat['count'] ?>)</a></li>
+            <?php $topCats = topCategories(max(1, (int)setting('footer_categories_count', '8'))); ?>
+            <ul class="site-footer__categories">
+                <?php foreach ($topCats as $cat): ?>
+                    <li>
+                        <a href="<?= e(categoryUrl($cat['category'])) ?>">
+                            <span class="site-footer__cat-name"><?= e($cat['category']) ?></span>
+                            <span class="site-footer__cat-count"><?= (int)$cat['count'] ?></span>
+                        </a>
+                    </li>
                 <?php endforeach; ?>
             </ul>
         </div>
-        <div class="site-footer__col">
-            <h3>Linki</h3>
-            <ul>
-                <?php if (setting('contact_enabled', '1') === '1'): ?>
-                    <li><a href="<?= e(BASE_URL) ?>/kontakt">Kontakt</a></li>
-                <?php endif; ?>
-                <li><a href="<?= e(BASE_URL) ?>/sitemap.xml">Mapa strony</a></li>
-                <li><a href="<?= e(BASE_URL) ?>/feed.php">RSS</a></li>
-                <li><a href="<?= e(BASE_URL) ?>/admin/login.php">Panel redakcji</a></li>
-            </ul>
-        </div>
+
+        <?php
+        $tagLimit = max(1, (int)setting('footer_tags_count', '20'));
+        $tags = topTags($tagLimit);
+        ?>
+        <?php if ($tags): ?>
+            <div class="site-footer__col site-footer__col--tags">
+                <h3><?= e(tagLabel()) ?></h3>
+                <?php $maxUsage = max(array_map(fn($t) => (int)$t['usage_count'], $tags)); ?>
+                <ul class="footer-tag-cloud">
+                    <?php foreach ($tags as $t):
+                        $bucket = tagSizeBucket((int)$t['usage_count'], $maxUsage); ?>
+                        <li>
+                            <a href="<?= e(tagUrl($t['slug'])) ?>" class="footer-tag-chip footer-tag-chip--s<?= $bucket ?>" title="<?= e($t['name']) ?> · <?= (int)$t['usage_count'] ?> art.">
+                                <?= e($t['name']) ?>
+                            </a>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
     </div>
     <p class="site-footer__copy">&copy; <?= date('Y') ?> <?= e(siteName()) ?>. Wszystkie prawa zastrzeżone.</p>
 </footer>
+<?= renderCustomCode('body_end') ?>
 </body>
 </html>

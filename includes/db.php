@@ -146,6 +146,21 @@ function initSchema(PDO $pdo): void {
         );
         CREATE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug);
 
+        CREATE TABLE IF NOT EXISTS pages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL DEFAULT '',
+            meta_title TEXT,
+            meta_description TEXT,
+            meta_keywords TEXT,
+            status TEXT DEFAULT 'published',
+            sort_order INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_pages_slug ON pages(slug);
+
         CREATE TABLE IF NOT EXISTS post_tags (
             post_id INTEGER NOT NULL,
             tag_id INTEGER NOT NULL,
@@ -155,6 +170,17 @@ function initSchema(PDO $pdo): void {
         );
         CREATE INDEX IF NOT EXISTS idx_post_tags_post ON post_tags(post_id);
         CREATE INDEX IF NOT EXISTS idx_post_tags_tag ON post_tags(tag_id);
+
+        CREATE TABLE IF NOT EXISTS post_ratings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id INTEGER NOT NULL,
+            ip_hash TEXT NOT NULL,
+            rating INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(post_id, ip_hash),
+            FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_ratings_post ON post_ratings(post_id);
     ");
 
     // Lekkie migracje dla istniejących instalacji
@@ -163,6 +189,8 @@ function initSchema(PDO $pdo): void {
     addColumnIfMissing($pdo, 'sources', 'max_age_days', "INTEGER");
     addColumnIfMissing($pdo, 'auto_runs', 'items_enqueued', "INTEGER DEFAULT 0");
     addColumnIfMissing($pdo, 'posts', 'source_attribution', "TEXT");
+    addColumnIfMissing($pdo, 'posts', 'tldr', "TEXT");
+    addColumnIfMissing($pdo, 'posts', 'show_toc', "INTEGER");  // NULL = global, 0/1 = override
 
     // Seed domyślnych kategorii (jeśli pusto)
     if ((int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn() === 0) {
@@ -192,7 +220,7 @@ function initSchema(PDO $pdo): void {
         'auto_target_language' => 'pl',
         'auto_default_category' => 'Aktualności',
         'auto_default_author' => 'Redakcja AI',
-        'auto_prompt' => "Jesteś dziennikarzem branżowym piszącym po polsku dla minimalistycznej gazety online o SEO, GEO, reklamie cyfrowej (ADS) i AI.\n\nNa podstawie poniższego artykułu źródłowego napisz oryginalne, ciekawe streszczenie po polsku — w formie samodzielnego newsa redakcyjnego, nie kopiując zdań ze źródła. Tekst powinien:\n- mieć ok. 300–500 słów,\n- być zwięzły, informacyjny i konkretny,\n- używać prostego języka, krótkich akapitów <p>,\n- zawierać 1-2 śródtytuły <h2> oraz listę <ul> jeśli to naturalne,\n- nie zaczynać od „W artykule…\", „Według…\" — pisz wprost,\n- na końcu dodać akapit „Dlaczego to ważne\" w 2-3 zdaniach.\n\nZwróć WYŁĄCZNIE poprawny JSON o strukturze:\n{\n  \"title\": \"chwytliwy tytuł po polsku, max 80 znaków\",\n  \"subtitle\": \"krótki podtytuł po polsku, max 140 znaków\",\n  \"excerpt\": \"zajawka 1-2 zdania po polsku, max 220 znaków\",\n  \"content\": \"treść w prostym HTML (<p>, <h2>, <ul>, <li>, <strong>, <em>, <blockquote>)\",\n  \"category\": \"jedna z: SEO, GEO, ADS, AI, Aktualności\",\n  \"keywords\": \"5-7 słów kluczowych po polsku, przecinki\",\n  \"image_alt\": \"opis sugerowanego obrazu po polsku, max 120 znaków\",\n  \"tags\": [\"tablica nazw firm/marek/produktów występujących w tekście, max 3\"]\n}",
+        'auto_prompt' => "Jesteś dziennikarzem branżowym piszącym po polsku dla minimalistycznej gazety online o SEO, GEO, reklamie cyfrowej (ADS) i AI.\n\nNa podstawie poniższego artykułu źródłowego napisz oryginalne, ciekawe streszczenie po polsku — w formie samodzielnego newsa redakcyjnego, nie kopiując zdań ze źródła. Tekst powinien:\n- mieć ok. 300–500 słów,\n- być zwięzły, informacyjny i konkretny,\n- używać prostego języka, krótkich akapitów <p>,\n- zawierać 1-2 śródtytuły <h2> oraz listę <ul> jeśli to naturalne,\n- nie zaczynać od „W artykule…\", „Według…\" — pisz wprost,\n- na końcu dodać akapit „Dlaczego to ważne\" w 2-3 zdaniach.\n\nZwróć WYŁĄCZNIE poprawny JSON o strukturze:\n{\n  \"title\": \"chwytliwy tytuł po polsku, max 80 znaków\",\n  \"subtitle\": \"krótki podtytuł po polsku, max 140 znaków\",\n  \"excerpt\": \"zajawka 1-2 zdania po polsku, max 220 znaków\",\n  \"content\": \"treść w prostym HTML (<p>, <h2>, <ul>, <li>, <strong>, <em>, <blockquote>)\",\n  \"category\": \"jedna z: SEO, GEO, ADS, AI, Aktualności\",\n  \"keywords\": \"5-7 słów kluczowych po polsku, przecinki\",\n  \"image_alt\": \"opis sugerowanego obrazu po polsku, max 120 znaków\",\n  \"tags\": [\"tablica nazw firm/marek/produktów występujących w tekście, max 3\"],\n  \"tldr\": \"2-3 zdania streszczenia (TL;DR) na sam początek — kluczowy fakt + dlaczego ważne, do 280 znaków, idealne do cytowania przez AI\"\n}",
         'auto_last_run' => '',
         // Tożsamość strony — edytowalne z panelu (nadpisują stałe z config.php)
         'site_name' => '',
@@ -204,7 +232,7 @@ function initSchema(PDO $pdo): void {
         // Kontakt
         'contact_enabled' => '1',
         'contact_email' => '',
-        'contact_subject_prefix' => '[The Daily Signal]',
+        'contact_subject_prefix' => '[bziku CMS]',
         // Tagi
         'auto_max_tags' => '3',
         'tag_label' => 'Tagi',
@@ -218,9 +246,87 @@ function initSchema(PDO $pdo): void {
         'auto_date_range_enabled' => '0',
         'auto_date_from' => '',
         'auto_date_to' => '',
+        // Stopka: ile elementów pokazać
+        'footer_tags_count' => '20',
+        'footer_categories_count' => '8',
+        // Custom code (dla GTM, analityki, weryfikacji itp.)
+        'custom_head_code' => '',
+        'custom_body_start_code' => '',
+        'custom_body_end_code' => '',
+        'gtm_id' => '',
+        'ga4_id' => '',
+        'gsc_verification' => '',
+        'bing_verification' => '',
+        'facebook_pixel_id' => '',
+        // Motyw
+        'active_theme' => 'classic',
+        // Menu — JSON arrays of {type, target, label}
+        'header_menu_items' => '',
+        'footer_menu_items' => '',
+        // Per-theme color overrides — JSON {slug: {var: value}}
+        'theme_color_overrides' => '',
+        // GEO/SEO
+        'toc_enabled_global' => '1',
+        'auto_generate_tldr' => '1',
+        'auto_internal_links' => '1',
+        'webp_conversion' => '1',
+        'reading_progress_bar' => '1',
+        'critical_css_inline' => '1',
+        // Ratings
+        'ratings_enabled' => '1',
+        // Cache busting
+        'cache_version' => '1',
+        // Masthead — edycja "Wydanie cyfrowe"
+        'masthead_edition_enabled' => '1',
+        'masthead_edition_text' => 'Wydanie cyfrowe',
+        // RODO / Cookie consent
+        'rodo_enabled' => '0',
+        'rodo_consent_mode_v2' => '1',
+        'rodo_banner_position' => 'bottom',
+        'rodo_banner_style' => 'modal',
+        'rodo_banner_title' => 'Szanujemy Twoją prywatność',
+        'rodo_banner_text' => 'Używamy plików cookie, by strona działała sprawnie i lepiej dopasowywała się do Twoich potrzeb. Część z nich jest niezbędna do działania serwisu, inne pomagają nam ulepszać treści i mierzyć efektywność. Wybierz, na co się zgadzasz — w każdej chwili możesz zmienić zdanie.',
+        'rodo_show_logo' => '1',
+        'rodo_consent_lifetime_days' => '365',
+        'rodo_auto_generate_policy' => '1',
+        'rodo_company_form' => 'individual',  // individual | company
+        'rodo_company_name' => '',
+        'rodo_company_address' => '',
+        'rodo_company_email' => '',
+        'rodo_company_nip' => '',
+        'rodo_dpo_contact' => '',
+        'rodo_show_company_data' => '0',  // czy w polityce ujawniać dane firmy
+        'rodo_categories' => '',  // JSON, fallback do domyślnych jeśli puste
+        'rodo_color_primary' => '#2540b8',
+        'rodo_accept_all_text' => 'Akceptuję wszystkie',
+        'rodo_accept_selected_text' => 'Zapisz mój wybór',
+        'rodo_reject_text' => 'Tylko niezbędne',
     ];
     $stmt = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach ($defaults as $k => $v) $stmt->execute([$k, $v]);
+
+    // Jednorazowa migracja: jeśli teksty RODO są równe starym cookiebot-like defaultom,
+    // podmień na nowe (przyjazne) wartości. Nie ruszamy jeśli user już zmienił.
+    $rodoMigrations = [
+        'rodo_banner_title' => [
+            'old' => 'Niniejsza strona korzysta z plików cookie',
+            'new' => 'Szanujemy Twoją prywatność',
+        ],
+        'rodo_banner_text' => [
+            'old' => 'Wykorzystujemy pliki cookie do spersonalizowania treści i reklam, aby oferować funkcje społecznościowe i analizować ruch w naszej witrynie. Informacje o tym, jak korzystasz z naszej witryny, udostępniamy partnerom społecznościowym, reklamowym i analitycznym. Partnerzy mogą połączyć te informacje z innymi danymi otrzymanymi od Ciebie lub uzyskanymi podczas korzystania z ich usług.',
+            'new' => 'Używamy plików cookie, by strona działała sprawnie i lepiej dopasowywała się do Twoich potrzeb. Część z nich jest niezbędna do działania serwisu, inne pomagają nam ulepszać treści i mierzyć efektywność. Wybierz, na co się zgadzasz — w każdej chwili możesz zmienić zdanie.',
+        ],
+        'rodo_accept_all_text' => ['old' => 'Zezwól na wszystkie', 'new' => 'Akceptuję wszystkie'],
+        'rodo_accept_selected_text' => ['old' => 'Zezwól na wybór', 'new' => 'Zapisz mój wybór'],
+        'rodo_reject_text' => ['old' => 'Odmowa', 'new' => 'Tylko niezbędne'],
+    ];
+    $sel = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
+    $upd = $pdo->prepare('UPDATE settings SET value = ? WHERE key = ?');
+    foreach ($rodoMigrations as $k => $m) {
+        $sel->execute([$k]);
+        $cur = $sel->fetchColumn();
+        if ($cur === $m['old']) $upd->execute([$m['new'], $k]);
+    }
 }
 
 function seedCategories(PDO $pdo): void {
