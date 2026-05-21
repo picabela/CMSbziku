@@ -114,7 +114,9 @@ if (setting('critical_css_inline', '1') === '1' && file_exists($criticalPath)): 
 <header class="masthead" role="banner">
     <div class="masthead__top">
         <span class="masthead__date"><?= e(formatDate(date('Y-m-d H:i:s'))) ?></span>
-        <span class="masthead__edition">Wydanie cyfrowe</span>
+        <?php if (setting('masthead_edition_enabled', '1') === '1' && setting('masthead_edition_text', '')): ?>
+            <span class="masthead__edition"><?= e(setting('masthead_edition_text', 'Wydanie cyfrowe')) ?></span>
+        <?php endif; ?>
     </div>
     <div class="masthead__title">
         <a href="<?= e(BASE_URL) ?>/" aria-label="Strona główna">

@@ -274,6 +274,11 @@ function initSchema(PDO $pdo): void {
         'critical_css_inline' => '1',
         // Ratings
         'ratings_enabled' => '1',
+        // Cache busting
+        'cache_version' => '1',
+        // Masthead — edycja "Wydanie cyfrowe"
+        'masthead_edition_enabled' => '1',
+        'masthead_edition_text' => 'Wydanie cyfrowe',
         // RODO / Cookie consent
         'rodo_enabled' => '0',
         'rodo_consent_mode_v2' => '1',

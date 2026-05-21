@@ -458,15 +458,57 @@ function activeTheme(): string {
 }
 
 /**
+ * Globalny cache-buster (inkrementowany przy "Wyczyść cache").
+ */
+function cacheVersion(): string {
+    return (string)(setting('cache_version', '1') ?: '1');
+}
+
+/**
  * Zwraca URL do pliku w aktywnym motywie. Przykład: themeAssetUrl('style.css').
- * Dodaje filemtime jako cache-buster.
+ * Dodaje filemtime jako cache-buster + globalny cache_version.
  */
 function themeAssetUrl(string $file): string {
     $slug = activeTheme();
     $path = __DIR__ . '/../themes/' . $slug . '/' . $file;
     $url  = BASE_URL . '/themes/' . rawurlencode($slug) . '/' . ltrim($file, '/');
-    if (file_exists($path)) $url .= '?v=' . filemtime($path);
+    $v = file_exists($path) ? filemtime($path) : time();
+    $url .= '?v=' . $v . '.' . cacheVersion();
     return $url;
+}
+
+/**
+ * Pełne czyszczenie cache: inkrementuje cache_version + reset OPcache.
+ * Zwraca tablicę z informacją co zostało wyczyszczone.
+ */
+function clearAllCaches(): array {
+    $result = ['cache_version' => false, 'opcache' => false, 'errors' => []];
+
+    // 1) Inkrementuj cache_version (forsuje re-download wszystkich assets)
+    try {
+        $current = (int)setting('cache_version', '1');
+        setSetting('cache_version', (string)($current + 1));
+        $result['cache_version'] = $current + 1;
+    } catch (Throwable $e) {
+        $result['errors'][] = 'cache_version: ' . $e->getMessage();
+    }
+
+    // 2) Reset PHP OPcache (jeśli dostępne)
+    if (function_exists('opcache_reset')) {
+        try {
+            $result['opcache'] = @opcache_reset();
+        } catch (Throwable $e) {
+            $result['errors'][] = 'opcache: ' . $e->getMessage();
+        }
+    } else {
+        $result['opcache'] = null; // niedostępne
+    }
+
+    // 3) Wymuś świeży odczyt z sources przy następnym auto-import
+    //    (last_fetched_at = NULL zmusi discovery do natychmiastowego sprawdzenia)
+    //    Wyłączone domyślnie żeby nie zmieniać stanu importera - user może chcieć ręcznie
+
+    return $result;
 }
 
 /**

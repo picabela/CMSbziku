@@ -32,6 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             setSetting('site_tagline', trim($_POST['site_tagline'] ?? ''));
             setSetting('top_notice_enabled', isset($_POST['top_notice_enabled']) ? '1' : '0');
             setSetting('top_notice_text', trim($_POST['top_notice_text'] ?? ''));
+            setSetting('masthead_edition_enabled', isset($_POST['masthead_edition_enabled']) ? '1' : '0');
+            setSetting('masthead_edition_text', trim($_POST['masthead_edition_text'] ?? ''));
 
             // Logo upload
             if (!empty($_FILES['logo']['name']) && $_FILES['logo']['error'] === UPLOAD_ERR_OK) {
@@ -93,6 +95,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $flash = ['type' => 'success', 'msg' => 'Ustawienia SEO/GEO zapisane.'];
         }
+
+        if ($section === 'cache_clear') {
+            $r = clearAllCaches();
+            $parts = ['Cache wyczyszczony.'];
+            $parts[] = 'Asset version: v' . $r['cache_version'];
+            if ($r['opcache'] === true) $parts[] = 'OPcache: zresetowany';
+            elseif ($r['opcache'] === false) $parts[] = 'OPcache: nieaktywny';
+            elseif ($r['opcache'] === null) $parts[] = 'OPcache: niedostępny';
+            $msg = implode(' · ', $parts);
+            if (!empty($r['errors'])) $msg .= ' (błędy: ' . implode(', ', $r['errors']) . ')';
+            $flash = ['type' => 'success', 'msg' => $msg];
+        }
     }
 }
 $logoFile = setting('site_logo');
@@ -136,6 +150,15 @@ $logoFile = setting('site_logo');
                     <textarea name="top_notice_text" rows="2"><?= e(setting('top_notice_text', '')) ?></textarea>
                 </label>
                 <p class="hint">Sugestia: krótko o tym, że strona jest zoptymalizowana pod czytniki/tablety i że treści są konkretne.</p>
+            </fieldset>
+
+            <fieldset class="radio-group">
+                <legend>Etykieta po prawej w nagłówku (domyślnie „Wydanie cyfrowe")</legend>
+                <label class="checkbox"><input type="checkbox" name="masthead_edition_enabled" value="1" <?= setting('masthead_edition_enabled', '1') === '1' ? 'checked' : '' ?>> Pokaż etykietę obok daty w masthead</label>
+                <label>Treść etykiety
+                    <input type="text" name="masthead_edition_text" value="<?= e(setting('masthead_edition_text', 'Wydanie cyfrowe')) ?>" maxlength="40" placeholder="np. Wydanie cyfrowe, Newsroom, Beta">
+                </label>
+                <p class="hint">Pojawia się obok daty na pasku nad logo. Wyłącz całkowicie odznaczając checkbox.</p>
             </fieldset>
 
             <button class="btn btn--primary" type="submit">Zapisz tożsamość</button>
@@ -255,6 +278,22 @@ $logoFile = setting('site_logo');
         </form>
         <p class="hint" style="margin-top:1rem">📄 <a href="<?= e(BASE_URL) ?>/llms.txt" target="_blank">Twój llms.txt</a> dla crawlerów AI (Anthropic, OpenAI, Perplexity) jest generowany automatycznie.</p>
         <p class="hint">🔍 <a href="<?= e(BASE_URL) ?>/szukaj" target="_blank">Wyszukiwarka /szukaj</a> — wbudowana, z paginacją i scoringiem (tytuł × 3, excerpt × 2, keywords × 1).</p>
+    </section>
+
+    <section class="settings-card">
+        <h2>🧹 Czyszczenie cache</h2>
+        <p class="hint">Jeśli nie widzisz świeżych zmian (CSS, JS, treści) — kliknij. Forsuje przeglądarki użytkowników do pobrania nowych wersji assets + resetuje PHP OPcache na serwerze.</p>
+        <p class="hint">Aktualna wersja cache: <strong>v<?= e(setting('cache_version', '1')) ?></strong> · OPcache na hostingu: <strong><?= function_exists('opcache_reset') ? '✓ dostępne' : '✗ niedostępne' ?></strong></p>
+        <form method="post">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="section" value="cache_clear">
+            <button type="submit" class="btn btn--primary">Wyczyść cache teraz</button>
+        </form>
+        <p class="hint" style="margin-top:0.85rem">Co zostanie wyczyszczone:</p>
+        <ul class="hint" style="margin:0.25rem 0 0 1.5rem">
+            <li>Cache przeglądarki dla wszystkich plików motywu (CSS) — wymuszone przez bump wersji w URL</li>
+            <li>PHP OPcache — wymusza re-kompilację plików PHP przy następnym requeście</li>
+        </ul>
     </section>
 
     <section class="settings-card">
