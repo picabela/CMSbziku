@@ -1,7 +1,13 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/updater.php';
 requireLogin();
 $adminTitle = $adminTitle ?? 'Panel redakcji';
+
+// Badge "nowa wersja" — bazujemy na cache (nie odpytuje GitHuba przy każdej stronie)
+$_updateCache = getCachedUpdateInfo();
+$_hasUpdate = $_updateCache && !empty($_updateCache['has_update'])
+    && compareVersions($_updateCache['latest_version'] ?? '0', getCurrentVersion()) > 0;
 ?><!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -29,6 +35,12 @@ $adminTitle = $adminTitle ?? 'Panel redakcji';
             <a href="rodo.php">RODO</a>
             <a href="export.php">Eksport/Import</a>
             <a href="settings.php">Ustawienia</a>
+            <a href="update.php" class="<?= $_hasUpdate ? 'admin-nav__update admin-nav__update--available' : 'admin-nav__update' ?>">
+                Aktualizacja
+                <?php if ($_hasUpdate): ?>
+                    <span class="admin-nav__badge" title="Dostępna nowa wersja: v<?= e($_updateCache['latest_version']) ?>">!</span>
+                <?php endif; ?>
+            </a>
             <a href="<?= e(BASE_URL) ?>/" target="_blank" rel="noopener">Strona ↗</a>
             <a href="logout.php" class="admin-nav__logout">Wyloguj</a>
         </nav>
