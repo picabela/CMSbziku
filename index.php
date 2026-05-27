@@ -7,7 +7,7 @@ $categoryName = $categorySlug ? categoryBySlug($categorySlug) : null;
 
 $posts = getPosts($page, $categoryName);
 $total = countPosts($categoryName);
-$_perPage = postsPerPage();
+$_perPage = function_exists('postsPerPage') ? postsPerPage() : POSTS_PER_PAGE;
 $totalPages = (int)ceil($total / $_perPage);
 
 $pageTitle = $categoryName
