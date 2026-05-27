@@ -7,20 +7,21 @@ $categoryName = $categorySlug ? categoryBySlug($categorySlug) : null;
 
 $posts = getPosts($page, $categoryName);
 $total = countPosts($categoryName);
-$totalPages = (int)ceil($total / POSTS_PER_PAGE);
+$_perPage = postsPerPage();
+$totalPages = (int)ceil($total / $_perPage);
 
 $pageTitle = $categoryName
-    ? $categoryName . ' — ' . SITE_NAME
-    : SITE_NAME . ' — ' . SITE_TAGLINE;
+    ? $categoryName . ' — ' . siteName()
+    : siteName() . ' — ' . siteTagline();
 $pageDescription = $categoryName
-    ? 'Wszystkie wiadomości z kategorii ' . $categoryName . ' na ' . SITE_NAME
+    ? 'Wszystkie wiadomości z kategorii ' . $categoryName . ' na ' . siteName()
     : SITE_DESCRIPTION;
 $canonical = $categoryName ? categoryUrl($categoryName) : BASE_URL . '/';
 
 // rel="prev"/"next" dla SEO paginacji
 $paginationBaseUrl = $categoryName ? categoryUrl($categoryName) : BASE_URL . '/';
 $paginationSep = str_contains($paginationBaseUrl, '?') ? '&' : '?';
-$_totalPagesForRel = (int)ceil($total / POSTS_PER_PAGE);
+$_totalPagesForRel = (int)ceil($total / $_perPage);
 if ($_totalPagesForRel > 1) {
     if ($page > 1) {
         $relPrev = $paginationBaseUrl . ($page - 1 > 1 ? $paginationSep . 'page=' . ($page - 1) : '');
@@ -37,7 +38,7 @@ $structuredData = [
     'description' => $pageDescription,
     'url' => $canonical,
     'inLanguage' => SITE_LANG,
-    'isPartOf' => ['@type' => 'WebSite', 'name' => SITE_NAME, 'url' => BASE_URL],
+    'isPartOf' => ['@type' => 'WebSite', 'name' => siteName(), 'url' => BASE_URL],
 ];
 
 include __DIR__ . '/includes/header.php';
