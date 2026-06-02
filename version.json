@@ -1,5 +1,5 @@
 {
-    "version": "1.0.0",
+    "version": "1.1.0",
     "released": "2026-06-02",
-    "notes": "Pierwsze wydanie z wbudowanym systemem aktualizacji z GitHuba."
+    "notes": "Wielokategorie: artykuł może należeć do maksymalnie N kategorii (domyślnie 2). Ustawienie limitu w panelu Kategorie."
 }

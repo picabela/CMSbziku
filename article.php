@@ -14,6 +14,7 @@ if (!$post) {
 }
 
 $pageTitle = ($post['meta_title'] ?: $post['title']) . ' | ' . siteName();
+$postCategories = getPostCategories((int)$post['id']);
 $pageDescription = $post['meta_description'] ?: $post['excerpt'];
 $canonical = postUrl($post);
 $ogImage = $post['featured_image']
@@ -46,7 +47,7 @@ $structuredData = [
         '@type' => 'WebPage',
         '@id' => $canonical,
     ],
-    'articleSection' => $post['category'],
+    'articleSection' => implode(', ', $postCategories ?: [$post['category']]),
     'inLanguage' => SITE_LANG,
     'keywords' => $post['meta_keywords'],
 ];
@@ -77,7 +78,7 @@ $breadcrumbData = [
     '@type' => 'BreadcrumbList',
     'itemListElement' => [
         ['@type' => 'ListItem', 'position' => 1, 'name' => 'Strona główna', 'item' => BASE_URL . '/'],
-        ['@type' => 'ListItem', 'position' => 2, 'name' => $post['category'], 'item' => categoryUrl($post['category'])],
+        ['@type' => 'ListItem', 'position' => 2, 'name' => $post['category'], 'item' => categoryUrl($post['category'])], // breadcrumb = główna kategoria
         ['@type' => 'ListItem', 'position' => 3, 'name' => $post['title'], 'item' => $canonical],
     ],
 ];
@@ -90,14 +91,16 @@ include __DIR__ . '/includes/header.php';
 <nav class="breadcrumbs" aria-label="Okruszki">
     <a href="<?= e(BASE_URL) ?>/">Strona główna</a>
     <span aria-hidden="true">/</span>
-    <a href="<?= e(categoryUrl($post['category'])) ?>"><?= e($post['category']) ?></a>
+    <a href="<?= e(categoryUrl($post['category'])) ?>"><?= e($post['category']) ?></a><?php if (count($postCategories) > 1): ?> <span class="muted" style="font-size:.85em">(+<?= count($postCategories)-1 ?>)</span><?php endif; ?>
     <span aria-hidden="true">/</span>
     <span><?= e($post['title']) ?></span>
 </nav>
 
 <article class="article" itemscope itemtype="https://schema.org/NewsArticle">
     <header class="article__header">
-        <span class="kicker" itemprop="articleSection"><?= e($post['category']) ?></span>
+        <?php foreach ($postCategories ?: [$post['category']] as $pCat): ?>
+            <a href="<?= e(categoryUrl($pCat)) ?>" class="kicker" itemprop="articleSection"><?= e($pCat) ?></a>
+        <?php endforeach; ?>
         <h1 class="article__title" itemprop="headline"><?= e($post['title']) ?></h1>
         <?php if ($post['subtitle']): ?>
             <p class="article__subtitle"><?= e($post['subtitle']) ?></p>
@@ -208,7 +211,7 @@ include __DIR__ . '/includes/header.php';
     <?php endif; ?>
 </article>
 
-<?php $related = getRelatedPosts($post['category'], (int)$post['id']); ?>
+<?php $related = getRelatedPosts($postCategories ?: [$post['category']], (int)$post['id']); ?>
 <?php if (!empty($related)): ?>
     <aside class="related">
         <h2 class="section-title">Przeczytaj również</h2>

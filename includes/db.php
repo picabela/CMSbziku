@@ -181,6 +181,15 @@ function initSchema(PDO $pdo): void {
             FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_ratings_post ON post_ratings(post_id);
+
+        CREATE TABLE IF NOT EXISTS post_categories (
+            post_id  INTEGER NOT NULL,
+            cat_name TEXT    NOT NULL,
+            PRIMARY KEY (post_id, cat_name),
+            FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_post_cats_post ON post_categories(post_id);
+        CREATE INDEX IF NOT EXISTS idx_post_cats_cat  ON post_categories(cat_name);
     ");
 
     // Lekkie migracje dla istniejących instalacji
@@ -246,6 +255,8 @@ function initSchema(PDO $pdo): void {
         'auto_date_range_enabled' => '0',
         'auto_date_from' => '',
         'auto_date_to' => '',
+        // Kategorie na artykuł
+        'max_categories_per_post' => '2',
         // Stopka: ile elementów pokazać
         'footer_tags_count' => '20',
         'footer_categories_count' => '8',
