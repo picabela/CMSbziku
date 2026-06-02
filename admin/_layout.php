@@ -29,6 +29,7 @@ $adminTitle = $adminTitle ?? 'Panel redakcji';
             <a href="rodo.php">RODO</a>
             <a href="export.php">Eksport/Import</a>
             <a href="settings.php">Ustawienia</a>
+            <a href="update.php">Aktualizacje</a>
             <a href="<?= e(BASE_URL) ?>/" target="_blank" rel="noopener">Strona ↗</a>
             <a href="logout.php" class="admin-nav__logout">Wyloguj</a>
         </nav>
