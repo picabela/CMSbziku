@@ -211,7 +211,13 @@ include __DIR__ . '/includes/header.php';
     <?php endif; ?>
 </article>
 
-<?php $related = getRelatedPosts($postCategories ?: [$post['category']], (int)$post['id']); ?>
+<?php
+$related = getRelatedPosts($postCategories ?: [$post['category']], (int)$post['id']);
+if (empty($related)) {
+    $related = array_filter(getPosts(1, null, 4), fn($r) => (int)$r['id'] !== (int)$post['id']);
+    $related = array_slice(array_values($related), 0, 3);
+}
+?>
 <?php if (!empty($related)): ?>
     <aside class="related">
         <h2 class="section-title">Przeczytaj również</h2>
@@ -278,7 +284,7 @@ include __DIR__ . '/includes/header.php';
                 form.append('post_id', postId);
                 form.append('rating', val);
                 form.append('csrf', csrfToken);
-                const res = await fetch('<?= e(BASE_URL) ?>/rate', { method: 'POST', body: form });
+                const res = await fetch('<?= e(BASE_URL) ?>/rate', { method: 'POST', body: form, credentials: 'same-origin' });
                 const data = await res.json();
                 if (data.ok) {
                     setActive(val);
