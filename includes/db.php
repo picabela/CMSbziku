@@ -235,6 +235,7 @@ function initSchema(PDO $pdo): void {
         'site_name' => '',
         'site_tagline' => '',
         'site_logo' => '',
+        'site_favicon' => '',
         // Top notice (czytelnie wymyślony przekaz)
         'top_notice_enabled' => '1',
         'top_notice_text' => 'Same fakty, bez lania wody. Czytaj wygodnie na ebooku, tablecie lub w przerwie na kawę.',

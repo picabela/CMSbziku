@@ -76,7 +76,7 @@ if (setting('critical_css_inline', '1') === '1' && file_exists($criticalPath)): 
 <?php endif; ?>
 <link rel="stylesheet" href="<?= e(themeAssetUrl('style.css')) ?>">
 <?= renderThemeColorStyle() ?>
-<link rel="icon" type="image/svg+xml" href="<?= e(BASE_URL) ?>/assets/images/favicon.svg">
+<link rel="icon" type="<?= e(faviconMimeType()) ?>" href="<?= e(faviconUrl()) ?>">
 
 <?php if (!empty($structuredData)): ?>
 <script type="application/ld+json"><?= json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?></script>

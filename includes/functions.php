@@ -324,6 +324,25 @@ function siteLogoUrl(): ?string {
     return $v !== '' ? UPLOAD_URL . '/' . $v : null;
 }
 
+/**
+ * Zwraca <link rel="icon"> dla wgranego favicona albo domyślny SVG z motywu.
+ */
+function faviconUrl(): string {
+    $v = trim((string)setting('site_favicon', ''));
+    if ($v !== '') return UPLOAD_URL . '/' . $v;
+    return BASE_URL . '/assets/images/favicon.svg';
+}
+
+function faviconMimeType(): string {
+    $v = trim((string)setting('site_favicon', ''));
+    $ext = $v !== '' ? strtolower(pathinfo($v, PATHINFO_EXTENSION)) : 'svg';
+    return match ($ext) {
+        'png' => 'image/png',
+        'ico' => 'image/x-icon',
+        default => 'image/svg+xml',
+    };
+}
+
 function tagLabel(): string {
     $v = trim((string)setting('tag_label', ''));
     return $v !== '' ? $v : 'Tagi';
