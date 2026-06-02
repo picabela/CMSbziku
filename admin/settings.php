@@ -72,6 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($section === 'footer') {
             setSetting('footer_tags_count', max(0, (int)($_POST['footer_tags_count'] ?? 20)));
             setSetting('footer_categories_count', max(0, (int)($_POST['footer_categories_count'] ?? 8)));
+            setSetting('posts_per_page', max(1, (int)($_POST['posts_per_page'] ?? POSTS_PER_PAGE)));
             $flash = ['type' => 'success', 'msg' => 'Ustawienia stopki zapisane.'];
         }
 
@@ -196,6 +197,10 @@ $logoFile = setting('site_logo');
                 </label>
             </div>
             <p class="hint">Zawsze pokazujemy te z największą liczbą artykułów. Rozmiar chipów tagów skaluje się z popularnością.</p>
+            <label>Liczba artykułów na stronie głównej (i stronach kategorii/tagów)
+                <input type="number" name="posts_per_page" min="1" max="100" value="<?= e(setting('posts_per_page', (string)POSTS_PER_PAGE)) ?>">
+            </label>
+            <p class="hint">Domyślnie <?= POSTS_PER_PAGE ?> artykułów na stronę. Na stronie głównej pierwszy artykuł wyświetla się jako "lead", pozostałe w siatce.</p>
             <button class="btn btn--primary" type="submit">Zapisz stopkę</button>
         </form>
     </section>

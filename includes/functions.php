@@ -36,9 +36,15 @@ function uniqueSlug(string $base, ?int $excludeId = null): string {
     }
 }
 
-function getPosts(int $page = 1, ?string $category = null): array {
+function postsPerPage(): int {
+    $v = (int)setting('posts_per_page', (string)POSTS_PER_PAGE);
+    return max(1, $v);
+}
+
+function getPosts(int $page = 1, ?string $category = null, ?int $perPage = null): array {
     $pdo = db();
-    $offset = ($page - 1) * POSTS_PER_PAGE;
+    $perPage = $perPage ?? postsPerPage();
+    $offset = ($page - 1) * $perPage;
     $where = "status = 'published'";
     $params = [];
     if ($category) {
@@ -47,7 +53,7 @@ function getPosts(int $page = 1, ?string $category = null): array {
     }
     $stmt = $pdo->prepare("SELECT * FROM posts WHERE $where ORDER BY published_at DESC LIMIT :limit OFFSET :offset");
     foreach ($params as $k => $v) $stmt->bindValue($k, $v);
-    $stmt->bindValue(':limit', POSTS_PER_PAGE, PDO::PARAM_INT);
+    $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
     $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $stmt->execute();
     return $stmt->fetchAll();
@@ -301,12 +307,13 @@ function getTagBySlug(string $slug): ?array {
     return $row ?: null;
 }
 
-function getPostsByTag(int $tagId, int $page = 1): array {
+function getPostsByTag(int $tagId, int $page = 1, ?int $perPage = null): array {
     $pdo = db();
-    $offset = ($page - 1) * POSTS_PER_PAGE;
+    $perPage = $perPage ?? postsPerPage();
+    $offset = ($page - 1) * $perPage;
     $stmt = $pdo->prepare("SELECT p.* FROM posts p JOIN post_tags pt ON pt.post_id = p.id WHERE pt.tag_id = ? AND p.status = 'published' ORDER BY p.published_at DESC LIMIT :limit OFFSET :offset");
     $stmt->bindValue(1, $tagId, PDO::PARAM_INT);
-    $stmt->bindValue(':limit', POSTS_PER_PAGE, PDO::PARAM_INT);
+    $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
     $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $stmt->execute();
     return $stmt->fetchAll();
