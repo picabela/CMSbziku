@@ -48,7 +48,7 @@ function getPosts(int $page = 1, ?string $category = null, ?int $perPage = null)
     $where = "status = 'published'";
     $params = [];
     if ($category) {
-        $where .= ' AND category = :cat';
+        $where .= " AND (category = :cat OR EXISTS (SELECT 1 FROM post_categories pc WHERE pc.post_id = posts.id AND pc.cat_name = :cat))";
         $params[':cat'] = $category;
     }
     $stmt = $pdo->prepare("SELECT * FROM posts WHERE $where ORDER BY published_at DESC LIMIT :limit OFFSET :offset");
@@ -64,7 +64,8 @@ function countPosts(?string $category = null): int {
     $where = "status = 'published'";
     $params = [];
     if ($category) {
-        $where .= ' AND category = ?';
+        $where .= " AND (category = ? OR EXISTS (SELECT 1 FROM post_categories pc WHERE pc.post_id = posts.id AND pc.cat_name = ?))";
+        $params[] = $category;
         $params[] = $category;
     }
     $stmt = $pdo->prepare("SELECT COUNT(*) AS c FROM posts WHERE $where");
@@ -98,29 +99,48 @@ function getCategories(): array {
     return $pdo->query("SELECT category, COUNT(*) AS count FROM posts WHERE status = 'published' GROUP BY category ORDER BY count DESC")->fetchAll();
 }
 
-function getRelatedPosts(string $category, int $excludeId, int $limit = 3): array {
-    // Semantic-ish: ranking po wspólnych tagach (Jaccard-like) + boost dla tej samej kategorii.
+/**
+ * @param string|string[] $categories  Kategoria główna lub tablica wszystkich kategorii artykułu.
+ */
+function getRelatedPosts(string|array $categories, int $excludeId, int $limit = 3): array {
     $pdo = db();
+    // Normalizuj do tablicy
+    if (is_string($categories)) $categories = [$categories];
+    $categories = array_values(array_unique(array_filter($categories)));
+    $primaryCat = $categories[0] ?? '';
+
     $tagsStmt = $pdo->prepare('SELECT tag_id FROM post_tags WHERE post_id = ?');
     $tagsStmt->execute([$excludeId]);
     $tagIds = array_map(fn($r) => (int)$r['tag_id'], $tagsStmt->fetchAll());
 
+    // Buduj wyrażenie dopasowania kategorii (+2 za każdą wspólną kategorię)
+    $catPh = implode(',', array_fill(0, count($categories), '?'));
+    $catMatchExpr = count($categories)
+        ? "(SELECT COUNT(*) FROM post_categories pc2 WHERE pc2.post_id = p.id AND pc2.cat_name IN ($catPh)) * 2
+           + CASE WHEN p.category IN ($catPh) THEN 2 ELSE 0 END"
+        : '0';
+
     if (!$tagIds) {
-        // Fallback: tylko kategoria (jak wcześniej)
-        $stmt = $pdo->prepare("SELECT * FROM posts WHERE category = ? AND id != ? AND status = 'published' ORDER BY published_at DESC LIMIT ?");
-        $stmt->bindValue(1, $category);
-        $stmt->bindValue(2, $excludeId, PDO::PARAM_INT);
-        $stmt->bindValue(3, $limit, PDO::PARAM_INT);
+        // Fallback: brak tagów — sortuj po kategorii + dacie
+        $sql = "SELECT p.* FROM posts p
+                WHERE p.id != ? AND p.status = 'published'
+                ORDER BY ($catMatchExpr) DESC, p.published_at DESC
+                LIMIT ?";
+        $stmt = $pdo->prepare($sql);
+        $i = 1;
+        foreach ($categories as $c) $stmt->bindValue($i++, $c);
+        foreach ($categories as $c) $stmt->bindValue($i++, $c);
+        $stmt->bindValue($i++, $excludeId, PDO::PARAM_INT);
+        $stmt->bindValue($i++, $limit, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
     }
 
-    // Punktacja: +1 za każdy wspólny tag, +2 za zgodność kategorii, świeżość jako tie-breaker
-    $placeholders = implode(',', array_fill(0, count($tagIds), '?'));
+    $tagPh = implode(',', array_fill(0, count($tagIds), '?'));
     $sql = "
         SELECT p.*,
-               (SELECT COUNT(*) FROM post_tags pt WHERE pt.post_id = p.id AND pt.tag_id IN ($placeholders)) AS shared_tags,
-               CASE WHEN p.category = ? THEN 2 ELSE 0 END AS cat_match
+               (SELECT COUNT(*) FROM post_tags pt WHERE pt.post_id = p.id AND pt.tag_id IN ($tagPh)) AS shared_tags,
+               ($catMatchExpr) AS cat_match
         FROM posts p
         WHERE p.id != ? AND p.status = 'published'
         HAVING (shared_tags + cat_match) > 0
@@ -129,21 +149,22 @@ function getRelatedPosts(string $category, int $excludeId, int $limit = 3): arra
     $stmt = $pdo->prepare($sql);
     $i = 1;
     foreach ($tagIds as $tid) $stmt->bindValue($i++, $tid, PDO::PARAM_INT);
-    $stmt->bindValue($i++, $category);
+    foreach ($categories as $c) $stmt->bindValue($i++, $c);
+    foreach ($categories as $c) $stmt->bindValue($i++, $c);
     $stmt->bindValue($i++, $excludeId, PDO::PARAM_INT);
     $stmt->bindValue($i++, $limit, PDO::PARAM_INT);
     $stmt->execute();
     $rows = $stmt->fetchAll();
     if (count($rows) >= $limit) return $rows;
 
-    // Dopełnij brakujące świeżymi z tej samej kategorii (jeśli mało wspólnych tagów)
+    // Dopełnij świeżymi z kategorii głównej
     $haveIds = array_map(fn($r) => (int)$r['id'], $rows);
     $excludeIds = array_merge([$excludeId], $haveIds);
     $need = $limit - count($rows);
     $ph = implode(',', array_fill(0, count($excludeIds), '?'));
     $fill = $pdo->prepare("SELECT * FROM posts WHERE category = ? AND id NOT IN ($ph) AND status='published' ORDER BY published_at DESC LIMIT ?");
     $i = 1;
-    $fill->bindValue($i++, $category);
+    $fill->bindValue($i++, $primaryCat);
     foreach ($excludeIds as $eid) $fill->bindValue($i++, $eid, PDO::PARAM_INT);
     $fill->bindValue($i++, $need, PDO::PARAM_INT);
     $fill->execute();
@@ -213,6 +234,51 @@ function bulkIds($raw): array {
 
 function allCategories(): array {
     return db()->query('SELECT * FROM categories ORDER BY sort_order, name')->fetchAll();
+}
+
+function maxCategoriesPerPost(): int {
+    return max(1, (int)setting('max_categories_per_post', '2'));
+}
+
+/**
+ * Zwraca wszystkie kategorie artykułu (pierwsza = główna).
+ * Dla starych artykułów bez wpisów w post_categories fallback do posts.category.
+ */
+function getPostCategories(int $postId): array {
+    $pdo = db();
+    // Zwróć wpisy z post_categories; główna (z posts.category) zawsze na początku
+    $stmt = $pdo->prepare(
+        'SELECT pc.cat_name FROM post_categories pc
+         JOIN posts p ON p.id = pc.post_id
+         WHERE pc.post_id = ?
+         ORDER BY CASE WHEN pc.cat_name = p.category THEN 0 ELSE 1 END, pc.cat_name'
+    );
+    $stmt->execute([$postId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    if (!empty($rows)) return $rows;
+    // Fallback: stary artykuł bez wpisów junction
+    $s = $pdo->prepare('SELECT category FROM posts WHERE id = ?');
+    $s->execute([$postId]);
+    $cat = $s->fetchColumn();
+    return $cat ? [$cat] : [];
+}
+
+/**
+ * Zapisuje kategorie artykułu.
+ * @param string   $primary  Kategoria główna (trafia też do posts.category — nie ruszamy jej tu)
+ * @param string[] $all      Wszystkie kategorie (łącznie z główną)
+ */
+function attachCategoriesToPost(int $postId, string $primary, array $all): void {
+    $pdo = db();
+    $pdo->prepare('DELETE FROM post_categories WHERE post_id = ?')->execute([$postId]);
+    $ins = $pdo->prepare('INSERT OR IGNORE INTO post_categories (post_id, cat_name) VALUES (?, ?)');
+    $ins->execute([$postId, $primary]);
+    foreach ($all as $cat) {
+        $cat = trim($cat);
+        if ($cat !== '' && $cat !== $primary) {
+            $ins->execute([$postId, $cat]);
+        }
+    }
 }
 
 function siteName(): string {

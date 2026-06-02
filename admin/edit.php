@@ -14,7 +14,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $subtitle = trim($_POST['subtitle'] ?? '');
         $excerpt = trim($_POST['excerpt'] ?? '');
         $content = $_POST['content'] ?? '';
-        $category = trim($_POST['category'] ?? 'Aktualności');
+        $category = trim($_POST['category'] ?? 'Aktualności'); // kategoria główna
+        $extraCats = is_array($_POST['extra_categories'] ?? null)
+            ? array_map('trim', $_POST['extra_categories'])
+            : [];
+        $extraCats = array_values(array_filter($extraCats));
+        $allCatsSelected = array_unique(array_merge([$category], $extraCats));
+        $maxCats = maxCategoriesPerPost();
+        if (count($allCatsSelected) > $maxCats) {
+            $errors[] = "Możesz wybrać maksymalnie {$maxCats} " . ($maxCats === 1 ? 'kategorię' : 'kategorie') . '.';
+        }
         $author = trim($_POST['author'] ?? 'Redakcja');
         $featuredAlt = trim($_POST['featured_image_alt'] ?? '');
         $metaTitle = trim($_POST['meta_title'] ?? '');
@@ -67,12 +76,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare("UPDATE posts SET slug=?, title=?, subtitle=?, excerpt=?, content=?, featured_image=?, featured_image_alt=?, category=?, author=?, meta_title=?, meta_description=?, meta_keywords=?, status=?, tldr=?, show_toc=?, published_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?");
                 $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt, $post['id']]);
                 attachTagsToPost((int)$post['id'], $tagNames);
+                attachCategoriesToPost((int)$post['id'], $category, $allCatsSelected);
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł zapisany.'];
             } else {
                 $stmt = $pdo->prepare("INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, tldr, show_toc, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                 $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt]);
                 $newId = (int)$pdo->lastInsertId();
                 attachTagsToPost($newId, $tagNames);
+                attachCategoriesToPost($newId, $category, $allCatsSelected);
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł utworzony.'];
             }
             header('Location: index.php');
@@ -84,6 +95,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $allCats = allCategories();
 $existingTags = $post ? getPostTags((int)$post['id']) : [];
 $existingTagsCsv = implode(', ', array_map(fn($t) => $t['name'], $existingTags));
+$existingPostCats = $post ? getPostCategories((int)$post['id']) : [];
+$maxCatsAllowed = maxCategoriesPerPost();
 ?>
 <div class="admin-page admin-page--editor">
     <div class="admin-page__head">
@@ -146,14 +159,31 @@ $existingTagsCsv = implode(', ', array_map(fn($t) => $t['name'], $existingTags))
 
                 <fieldset>
                     <legend>Klasyfikacja</legend>
-                    <label>Kategoria
-                        <select name="category">
-                            <?php $cur = $post['category'] ?? 'Aktualności'; foreach ($allCats as $c): ?>
-                                <option value="<?= e($c['name']) ?>" <?= $c['name'] === $cur ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+                    <label>Kategoria główna <small class="hint">(decyduje o URL i filtrach)</small>
+                        <?php $curPrimary = $post['category'] ?? 'Aktualności'; ?>
+                        <select name="category" id="cat-primary">
+                            <?php foreach ($allCats as $c): ?>
+                                <option value="<?= e($c['name']) ?>" <?= $c['name'] === $curPrimary ? 'selected' : '' ?>><?= e($c['name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                         <small class="hint"><a href="categories.php">Zarządzaj kategoriami</a></small>
                     </label>
+                    <?php if ($maxCatsAllowed > 1): ?>
+                    <div id="extra-cats-wrap">
+                        <span class="editor-form__label" style="display:block;margin:0.5rem 0 0.25rem">Dodatkowe kategorie <small class="hint">(max łącznie <?= $maxCatsAllowed ?>)</small></span>
+                        <div id="extra-cats-list" style="display:flex;flex-direction:column;gap:0.25rem">
+                            <?php foreach ($allCats as $c):
+                                $checked = in_array($c['name'], $existingPostCats, true) && $c['name'] !== $curPrimary;
+                            ?>
+                                <label class="checkbox extra-cat-item" data-cat="<?= e($c['name']) ?>">
+                                    <input type="checkbox" name="extra_categories[]" value="<?= e($c['name']) ?>"<?= $checked ? ' checked' : '' ?>>
+                                    <?= e($c['name']) ?>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                        <small class="hint" id="extra-cats-hint"></small>
+                    </div>
+                    <?php endif; ?>
                     <label>Autor
                         <input type="text" name="author" value="<?= e($post['author'] ?? 'Redakcja') ?>">
                     </label>
@@ -197,6 +227,51 @@ $existingTagsCsv = implode(', ', array_map(fn($t) => $t['name'], $existingTags))
 </div>
 
 <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+<script>
+(function(){
+    const MAX = <?= (int)$maxCatsAllowed ?>;
+    const primary = document.getElementById('cat-primary');
+    const wrap = document.getElementById('extra-cats-list');
+    const hint = document.getElementById('extra-cats-hint');
+    if (!primary || !wrap) return;
+
+    function refresh() {
+        const pVal = primary.value;
+        const items = wrap.querySelectorAll('.extra-cat-item');
+        let checked = 0;
+        items.forEach(item => {
+            const cb = item.querySelector('input[type=checkbox]');
+            const cat = item.dataset.cat;
+            // Ukryj jeśli to kategoria główna
+            if (cat === pVal) {
+                item.style.display = 'none';
+                cb.checked = false;
+                cb.disabled = true;
+            } else {
+                item.style.display = '';
+                cb.disabled = false;
+                if (cb.checked) checked++;
+            }
+        });
+        const remaining = (MAX - 1) - checked; // -1 bo główna zawsze wliczona
+        if (hint) {
+            hint.textContent = remaining > 0
+                ? 'Możesz zaznaczyć jeszcze ' + remaining + (remaining === 1 ? ' dodatkową kategorię.' : ' dodatkowe kategorie.')
+                : 'Osiągnięto limit. Odznacz jedną, by wybrać inną.';
+        }
+        // Zablokuj niezaznaczone gdy limit osiągnięty
+        items.forEach(item => {
+            const cb = item.querySelector('input[type=checkbox]');
+            if (!cb.disabled && !cb.checked && remaining <= 0) cb.disabled = true;
+            else if (!cb.disabled && !cb.checked && remaining > 0) cb.disabled = false;
+        });
+    }
+
+    primary.addEventListener('change', refresh);
+    wrap.addEventListener('change', refresh);
+    refresh();
+})();
+</script>
 <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script>
 (function(){

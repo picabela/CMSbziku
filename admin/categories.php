@@ -7,6 +7,12 @@ unset($_SESSION['flash']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null)) {
     $action = $_POST['bulk_action'] ?? $_POST['action'] ?? '';
+
+    if ($action === 'save_settings') {
+        setSetting('max_categories_per_post', max(1, (int)($_POST['max_categories_per_post'] ?? 2)));
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Ustawienia kategorii zapisane.'];
+        header('Location: categories.php'); exit;
+    }
     $pdo = db();
 
     if ($action === 'delete_single') {
@@ -60,6 +66,21 @@ $cats = db()->query('SELECT c.*, (SELECT COUNT(*) FROM posts p WHERE p.category 
     </div>
     <?php if ($flash): ?><div class="flash flash--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
     <p class="hint">Kategorie definiują, gdzie AI może umieścić wygenerowany artykuł. Opis pomaga modelowi trafniej klasyfikować.</p>
+
+    <section class="settings-card" style="margin-bottom:1.5rem">
+        <h2>Ustawienia kategorii</h2>
+        <form method="post" class="settings-form">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="action" value="save_settings">
+            <label>Maksymalna liczba kategorii na artykuł
+                <input type="number" name="max_categories_per_post" min="1" max="10"
+                       value="<?= e(setting('max_categories_per_post', '2')) ?>"
+                       style="width:80px">
+            </label>
+            <p class="hint">Domyślnie 2. Pierwsza zaznaczona (kategoria główna) decyduje o adresie URL i filtrowaniu. Pozostałe to kategorie dodatkowe — artykuł pojawia się też na ich stronach.</p>
+            <button type="submit" class="btn btn--primary">Zapisz ustawienia</button>
+        </form>
+    </section>
 
     <details class="settings-card">
         <summary><strong>+ Hurtowe dodawanie kategorii</strong> <span class="muted">(jedna na wiersz)</span></summary>
