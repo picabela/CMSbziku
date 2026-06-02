@@ -1,5 +1,9 @@
 data/*.sqlite
 data/*.sqlite-journal
+data/backups/
+data/_update/
+data/_update_restore/
+includes/config.php.new
 uploads/*
 !uploads/.gitkeep
 !data/.gitkeep
