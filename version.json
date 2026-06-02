@@ -1,5 +1,5 @@
 {
-    "version": "1.2.0",
+    "version": "1.2.1",
     "released": "2026-06-02",
-    "notes": "Auto-import obsługuje wiele kategorii (AI przypisuje główną + dodatkowe). Nowa zakładka Prompty — wszystkie prompty AI w jednym miejscu, edytowalne z możliwością przywrócenia domyślnych."
+    "notes": "Dodano możliwość wgrania własnego favicona w Ustawieniach (PNG/ICO/SVG)."
 }

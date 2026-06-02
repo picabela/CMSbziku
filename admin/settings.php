@@ -59,6 +59,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($old) @unlink(UPLOAD_DIR . '/' . $old);
                 setSetting('site_logo', '');
             }
+
+            // Favicon upload
+            if (!empty($_FILES['favicon']['name']) && $_FILES['favicon']['error'] === UPLOAD_ERR_OK) {
+                $f = $_FILES['favicon'];
+                $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+                $allowed = ['png','ico','svg'];
+                if (!in_array($ext, $allowed, true)) {
+                    $flash = ['type' => 'error', 'msg' => 'Favicon musi być PNG/ICO/SVG.'];
+                } elseif ($f['size'] > 1024 * 1024) {
+                    $flash = ['type' => 'error', 'msg' => 'Favicon zbyt duży (max 1 MB).'];
+                } else {
+                    @mkdir(UPLOAD_DIR, 0775, true);
+                    $filename = 'favicon_' . time() . '.' . $ext;
+                    if (move_uploaded_file($f['tmp_name'], UPLOAD_DIR . '/' . $filename)) {
+                        $old = setting('site_favicon');
+                        if ($old) @unlink(UPLOAD_DIR . '/' . $old);
+                        setSetting('site_favicon', $filename);
+                    }
+                }
+            }
+            if (isset($_POST['remove_favicon'])) {
+                $old = setting('site_favicon');
+                if ($old) @unlink(UPLOAD_DIR . '/' . $old);
+                setSetting('site_favicon', '');
+            }
             if (!$flash) $flash = ['type' => 'success', 'msg' => 'Tożsamość strony zaktualizowana.'];
         }
 
@@ -142,6 +167,19 @@ $logoFile = setting('site_logo');
                     <input type="file" name="logo" accept="image/png,image/jpeg,image/svg+xml,image/webp">
                 </label>
                 <p class="hint">Jeśli nie wgrasz logo, używana będzie nazwa tekstowa.</p>
+            </fieldset>
+
+            <fieldset class="radio-group">
+                <legend>Favicon</legend>
+                <?php $faviconFile = setting('site_favicon'); ?>
+                <?php if ($faviconFile): ?>
+                    <p><img src="<?= e(UPLOAD_URL . '/' . $faviconFile) ?>" alt="Favicon" style="height:32px;width:32px;background:#fff;padding:2px;border:1px solid #ddd"></p>
+                    <label class="checkbox"><input type="checkbox" name="remove_favicon" value="1"> Usuń favicon (wróci do domyślnego)</label>
+                <?php endif; ?>
+                <label>Wgraj favicon (PNG/ICO/SVG, max 1 MB)
+                    <input type="file" name="favicon" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml,.ico">
+                </label>
+                <p class="hint">Zalecany kwadratowy obraz, np. 32×32 lub 48×48 px (PNG/ICO) albo skalowalny SVG. Bez wgranego pliku używana jest domyślna ikona z motywu.</p>
             </fieldset>
 
             <fieldset class="radio-group">
