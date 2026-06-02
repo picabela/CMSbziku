@@ -12,7 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
     if ($action === 'save') {
         $keys = ['auto_enabled','auto_interval_minutes','auto_posts_per_tick','auto_discovery_interval_minutes','auto_max_age_days','auto_publish',
                  'openai_api_key','openai_model','openai_temperature',
-                 'auto_target_language','auto_default_category','auto_default_author','auto_prompt',
+                 'auto_target_language','auto_default_category','auto_default_author',
                  'auto_max_tags','source_attribution_template','auto_keep_original_date','auto_content_max_chars',
                  'auto_date_range_enabled','auto_date_from','auto_date_to'];
         foreach ($keys as $k) {
@@ -281,11 +281,8 @@ $cronUrl = BASE_URL . '/cron/run.php?token=' . urlencode(setting('auto_token'));
         <label>Domyślna kategoria<input type="text" name="auto_default_category" value="<?= e(setting('auto_default_category', 'Aktualności')) ?>"></label>
         <label>Domyślny autor<input type="text" name="auto_default_author" value="<?= e(setting('auto_default_author', 'Redakcja AI')) ?>"></label>
 
-        <h2 style="margin-top:1.5rem">Prompt redakcyjny (system)</h2>
-        <label>Treść promptu — definiuje styl i format generowanych artykułów
-            <textarea name="auto_prompt" rows="14"><?= e(setting('auto_prompt', '')) ?></textarea>
-        </label>
-        <p class="hint">Model musi zwrócić JSON z polami: <code>title, subtitle, excerpt, content, category, keywords, image_alt</code>.</p>
+        <h2 style="margin-top:1.5rem">Prompty AI</h2>
+        <p class="hint">Prompt redakcyjny (system), instrukcja wyboru kategorii i wyciągania tagów są teraz edytowalne w jednym miejscu: <a href="prompts.php"><strong>zakładka Prompty</strong></a>.</p>
 
         <button type="submit" class="btn btn--primary">Zapisz ustawienia</button>
     </form>

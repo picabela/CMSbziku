@@ -656,24 +656,28 @@ class AutoImporter {
         $apiKey = setting('openai_api_key');
         $model = setting('openai_model', 'gpt-4o-mini');
         $temp = (float)setting('openai_temperature', '0.4');
-        $systemPrompt = setting('auto_prompt');
+        $systemPrompt = effectivePrompt('auto_prompt', 'defaultSystemPrompt');
 
-        // Lista kategorii do wyboru — model musi przypisać artykuł do JEDNEJ z nich.
+        // Lista kategorii do wyboru — model przypisuje artykuł do 1..N z nich.
         $cats = $this->pdo->query('SELECT name, description FROM categories ORDER BY sort_order, name')->fetchAll();
         $catLines = array_map(fn($c) => '- ' . $c['name'] . ($c['description'] ? ': ' . $c['description'] : ''), $cats);
         $catList = implode("\n", $catLines);
         $catNames = array_map(fn($c) => $c['name'], $cats);
 
-        $catPrompt = "\n\nDostępne kategorie (wybierz DOKŁADNIE JEDNĄ pasującą i wpisz jej nazwę w pole \"category\"):\n" . $catList;
+        $maxCats = maxCategoriesPerPost();
+        $extraMax = max(0, $maxCats - 1);
+        $catTemplate = effectivePrompt('auto_prompt_category', 'defaultCategoryPrompt');
+        $catPrompt = "\n\n" . strtr($catTemplate, [
+            '{categories}' => $catList,
+            '{max}'        => (string)$maxCats,
+            '{extra_max}'  => (string)$extraMax,
+        ]);
 
         $maxTags = max(0, min(10, (int)setting('auto_max_tags', '3')));
         $tagPrompt = "";
         if ($maxTags > 0) {
-            $tagPrompt = "\n\nWyciągnij z artykułu listę tagów — TYLKO nazwy firm, marek, produktów lub usług, które bezpośrednio występują w tekście "
-                . "(np. Google, Bing, Perplexity, ChatGPT, Anthropic, Microsoft Edge, Bing Ads). "
-                . "Maks. {$maxTags} tagów, oryginalna pisownia nazw własnych. "
-                . "Pomiń ogólne pojęcia (SEO, AI, marketing). Jeśli żadna marka/firma nie występuje — zwróć pustą tablicę. "
-                . "Zwróć pole \"tags\" jako JSON-tablicę stringów, np. [\"Google\",\"Perplexity\"].";
+            $tagTemplate = effectivePrompt('auto_prompt_tags', 'defaultTagsPrompt');
+            $tagPrompt = "\n\n" . strtr($tagTemplate, ['{max_tags}' => (string)$maxTags]);
         }
 
         $user = "Źródło: {$source['name']}\n"
@@ -731,8 +735,23 @@ class AutoImporter {
         }
 
         $rawCategory = $parsed['category'] ?? '';
-        // Normalizuj kategorię — model musi się zmieścić w istniejącej liście.
+        // Normalizuj kategorię główną — model musi się zmieścić w istniejącej liście.
         $parsed['category'] = $this->normalizeCategory($rawCategory, $source, $catNames);
+
+        // Dodatkowe kategorie (multi-category). Akceptuj 'extra_categories' lub 'categories'.
+        $extraRaw = $parsed['extra_categories'] ?? ($parsed['categories'] ?? []);
+        if (is_string($extraRaw)) $extraRaw = array_map('trim', explode(',', $extraRaw));
+        $normExtra = [];
+        if (is_array($extraRaw) && $extraMax > 0) {
+            foreach ($extraRaw as $ec) {
+                $m = $this->matchCategory((string)$ec, $catNames);
+                if ($m !== null && $m !== $parsed['category'] && !in_array($m, $normExtra, true)) {
+                    $normExtra[] = $m;
+                }
+            }
+            $normExtra = array_slice($normExtra, 0, $extraMax);
+        }
+        $parsed['extra_categories'] = $normExtra;
 
         $this->trace('6_openai_response', [
             'http_status' => $code,
@@ -740,10 +759,22 @@ class AutoImporter {
             'parsed' => $parsed,
             'category_raw' => $rawCategory,
             'category_normalized' => $parsed['category'],
+            'extra_categories' => $parsed['extra_categories'],
             'usage' => $data['usage'] ?? null,
         ]);
 
         return $parsed;
+    }
+
+    /** Dopasowuje kandydata do nazwy kategorii (case-insensitive) lub null. */
+    private function matchCategory(string $candidate, array $available): ?string {
+        $cand = trim($candidate);
+        if ($cand === '') return null;
+        $low = mb_strtolower($cand);
+        foreach ($available as $name) {
+            if (mb_strtolower($name) === $low) return $name;
+        }
+        return null;
     }
 
     private function normalizeCategory(string $candidate, array $source, array $available): string {
@@ -819,6 +850,11 @@ class AutoImporter {
             ':pub' => $publishedAt,
         ]);
         $postId = (int)$this->pdo->lastInsertId();
+
+        // Kategorie: główna + dodatkowe (multi-category) do tabeli post_categories
+        $extraCats = $gen['extra_categories'] ?? [];
+        if (!is_array($extraCats)) $extraCats = [];
+        attachCategoriesToPost($postId, $category, array_merge([$category], $extraCats));
 
         // Tagi z odpowiedzi AI
         $tags = $gen['tags'] ?? [];
