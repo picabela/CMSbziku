@@ -284,8 +284,16 @@ if (empty($related)) {
                 form.append('post_id', postId);
                 form.append('rating', val);
                 form.append('csrf', csrfToken);
-                const res = await fetch('<?= e(BASE_URL) ?>/rate', { method: 'POST', body: form, credentials: 'same-origin' });
-                const data = await res.json();
+                const res = await fetch('<?= e(BASE_URL) ?>/rate.php', { method: 'POST', body: form, credentials: 'same-origin' });
+                let data;
+                try {
+                    data = await res.json();
+                } catch (parseErr) {
+                    msg.hidden = false;
+                    msg.textContent = '⚠ Nieprawidłowa odpowiedź serwera (HTTP ' + res.status + ').';
+                    msg.className = 'rating-message rating-message--err';
+                    return;
+                }
                 if (data.ok) {
                     setActive(val);
                     avgEl.textContent = (data.average || 0).toFixed(1).replace('.', ',');
