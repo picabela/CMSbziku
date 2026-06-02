@@ -36,4 +36,29 @@ include __DIR__ . '/includes/header.php';
     </div>
 </article>
 
+<?php $recentPosts = getPosts(1, null, 3); ?>
+<?php if (!empty($recentPosts)): ?>
+    <aside class="related">
+        <h2 class="section-title">Przeczytaj również</h2>
+        <div class="grid">
+            <?php foreach ($recentPosts as $rp): ?>
+                <article class="card">
+                    <a href="<?= e(postUrl($rp)) ?>" class="card__link">
+                        <?php if ($rp['featured_image']): ?>
+                            <div class="card__image">
+                                <img src="<?= e(UPLOAD_URL . '/' . $rp['featured_image']) ?>" alt="<?= e($rp['featured_image_alt'] ?: $rp['title']) ?>" loading="lazy" width="600" height="400">
+                            </div>
+                        <?php endif; ?>
+                        <div class="card__body">
+                            <span class="kicker"><?= e($rp['category']) ?></span>
+                            <h3 class="card__title"><?= e($rp['title']) ?></h3>
+                            <p class="meta"><time datetime="<?= e($rp['published_at']) ?>"><?= e(formatDate($rp['published_at'])) ?></time></p>
+                        </div>
+                    </a>
+                </article>
+            <?php endforeach; ?>
+        </div>
+    </aside>
+<?php endif; ?>
+
 <?php include __DIR__ . '/includes/footer.php';

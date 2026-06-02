@@ -5,13 +5,14 @@ $page = max(1, (int)($_GET['page'] ?? 1));
 $categorySlug = $_GET['kategoria'] ?? null;
 $categoryName = $categorySlug ? categoryBySlug($categorySlug) : null;
 
-$posts = getPosts($page, $categoryName);
+$perPage = postsPerPage();
+$posts = getPosts($page, $categoryName, $perPage);
 $total = countPosts($categoryName);
-$totalPages = (int)ceil($total / POSTS_PER_PAGE);
+$totalPages = (int)ceil($total / $perPage);
 
 $pageTitle = $categoryName
-    ? $categoryName . ' — ' . SITE_NAME
-    : SITE_NAME . ' — ' . SITE_TAGLINE;
+    ? $categoryName . ' — ' . siteName()
+    : siteName() . ' — ' . siteTagline();
 $pageDescription = $categoryName
     ? 'Wszystkie wiadomości z kategorii ' . $categoryName . ' na ' . SITE_NAME
     : SITE_DESCRIPTION;
@@ -20,7 +21,7 @@ $canonical = $categoryName ? categoryUrl($categoryName) : BASE_URL . '/';
 // rel="prev"/"next" dla SEO paginacji
 $paginationBaseUrl = $categoryName ? categoryUrl($categoryName) : BASE_URL . '/';
 $paginationSep = str_contains($paginationBaseUrl, '?') ? '&' : '?';
-$_totalPagesForRel = (int)ceil($total / POSTS_PER_PAGE);
+$_totalPagesForRel = $totalPages;
 if ($_totalPagesForRel > 1) {
     if ($page > 1) {
         $relPrev = $paginationBaseUrl . ($page - 1 > 1 ? $paginationSep . 'page=' . ($page - 1) : '');

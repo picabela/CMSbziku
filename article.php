@@ -13,7 +13,7 @@ if (!$post) {
     exit;
 }
 
-$pageTitle = ($post['meta_title'] ?: $post['title']) . ' | ' . SITE_NAME;
+$pageTitle = ($post['meta_title'] ?: $post['title']) . ' | ' . siteName();
 $pageDescription = $post['meta_description'] ?: $post['excerpt'];
 $canonical = postUrl($post);
 $ogImage = $post['featured_image']
@@ -211,7 +211,7 @@ include __DIR__ . '/includes/header.php';
 <?php $related = getRelatedPosts($post['category'], (int)$post['id']); ?>
 <?php if (!empty($related)): ?>
     <aside class="related">
-        <h2 class="section-title">Powiązane artykuły</h2>
+        <h2 class="section-title">Przeczytaj również</h2>
         <div class="grid">
             <?php foreach ($related as $r): ?>
                 <article class="card">

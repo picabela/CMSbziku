@@ -14,9 +14,10 @@ if (!$tag) {
 }
 
 $page = max(1, (int)($_GET['page'] ?? 1));
-$posts = getPostsByTag((int)$tag['id'], $page);
+$perPage = postsPerPage();
+$posts = getPostsByTag((int)$tag['id'], $page, $perPage);
 $total = countPostsByTag((int)$tag['id']);
-$totalPages = (int)ceil($total / POSTS_PER_PAGE);
+$totalPages = (int)ceil($total / $perPage);
 
 $label = tagLabel();
 $pageTitle = $label . ': ' . $tag['name'] . ' — ' . siteName();
