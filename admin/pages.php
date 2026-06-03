@@ -47,14 +47,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
                 $stmt = $pdo->prepare('UPDATE pages SET slug=?, title=?, content=?, meta_title=?, meta_description=?, meta_keywords=?, status=?, sort_order=?, updated_at=CURRENT_TIMESTAMP WHERE id=?');
                 $stmt->execute([$slug, $title, $content, $metaTitle, $metaDesc, $metaKw, $status, $sortOrder, $page['id']]);
                 if ($status === 'published' && indexingAutoEnabled()) {
-                    indexingSubmitUrl(BASE_URL . '/strona/' . $slug);
+                    indexingSubmitUrl(absoluteSiteUrl('strona/' . $slug));
                 }
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Strona zapisana.'];
             } else {
                 $stmt = $pdo->prepare('INSERT INTO pages (slug, title, content, meta_title, meta_description, meta_keywords, status, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
                 $stmt->execute([$slug, $title, $content, $metaTitle, $metaDesc, $metaKw, $status, $sortOrder]);
                 if ($status === 'published' && indexingAutoEnabled()) {
-                    indexingSubmitUrl(BASE_URL . '/strona/' . $slug);
+                    indexingSubmitUrl(absoluteSiteUrl('strona/' . $slug));
                 }
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Strona utworzona.'];
             }

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/functions.php';
+rememberSiteUrl();
 $pageTitle = $pageTitle ?? (siteName() . ' — ' . siteTagline());
 $pageDescription = $pageDescription ?? SITE_DESCRIPTION;
 $canonical = $canonical ?? BASE_URL . ($_SERVER['REQUEST_URI'] ?? '/');

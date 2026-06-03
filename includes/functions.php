@@ -190,6 +190,46 @@ function postUrl(array $post): string {
     return BASE_URL . '/' . $post['slug'];
 }
 
+/**
+ * Kanoniczny adres bazowy strony (bez końcowego /).
+ *
+ * BASE_URL liczone jest z $_SERVER (HTTP_HOST/SCRIPT_NAME), więc bywa błędne
+ * przy uruchomieniu z crona: CLI daje "localhost", a HTTP /cron/run.php dokleja
+ * przedrostek "/cron". Dlatego przy każdym normalnym żądaniu WWW zapamiętujemy
+ * poprawny adres w ustawieniu site_url i używamy go do budowania absolutnych
+ * URL-i zgłaszanych do indeksacji.
+ */
+function siteBaseUrl(): string {
+    $v = trim((string)setting('site_url', ''));
+    return $v !== '' ? rtrim($v, '/') : rtrim(BASE_URL, '/');
+}
+
+/** Buduje absolutny URL strony z kanonicznej bazy (poprawny także w cronie). */
+function absoluteSiteUrl(string $path = ''): string {
+    return siteBaseUrl() . '/' . ltrim($path, '/');
+}
+
+/** Kanoniczny, absolutny URL artykułu — używany do zgłaszania do indeksacji. */
+function postIndexUrl(array $post): string {
+    return absoluteSiteUrl((string)$post['slug']);
+}
+
+/**
+ * Zapamiętuje kanoniczny adres bazowy z bieżącego żądania WWW.
+ * Pomija CLI, localhost oraz żądania z /cron/ (gdzie BASE_URL jest błędne).
+ */
+function rememberSiteUrl(): void {
+    if (PHP_SAPI === 'cli') return;
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host === '' || stripos($host, 'localhost') !== false || str_starts_with($host, '127.')) return;
+    if (strpos($_SERVER['SCRIPT_NAME'] ?? '', '/cron/') !== false) return;
+    $current = rtrim(BASE_URL, '/');
+    if ($current === '' ) return;
+    if (trim((string)setting('site_url', '')) !== $current) {
+        setSetting('site_url', $current);
+    }
+}
+
 function categoryUrl(string $category): string {
     return BASE_URL . '/kategoria/' . slugify($category);
 }

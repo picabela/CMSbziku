@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
                 $submitted = 0; $skipped = 0;
                 foreach ($rows as $r) {
                     if ($r['status'] !== 'published') { $skipped++; continue; }
-                    $url = postUrl($r);
+                    $url = postIndexUrl($r);
                     if ($action === 'index_new' && !empty($counts[$url])) { $skipped++; continue; }
                     indexingSubmitUrl($url);
                     $submitted++;
@@ -134,7 +134,7 @@ $indexingOn = indexingAnyEnabled();
                                 <?php endforeach; ?>
                             </td>
                             <td><span class="pill pill--<?= e($p['status']) ?>"><?= e($p['status']) ?></span></td>
-                            <?php $cnt = (int)($indexCounts[postUrl($p)] ?? 0); ?>
+                            <?php $cnt = (int)($indexCounts[postIndexUrl($p)] ?? 0); ?>
                             <td><span class="index-count<?= $cnt > 0 ? ' index-count--ok' : ' index-count--zero' ?>" title="<?= $cnt > 0 ? 'Zgłoszono ' . $cnt . ' raz(y)' : 'Nigdy nie zgłoszono' ?>"><?= $cnt ?>×</span></td>
                             <td><?= e(formatDate($p['published_at'])) ?></td>
                             <td class="admin-table__actions">

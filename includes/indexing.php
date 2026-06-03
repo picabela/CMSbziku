@@ -166,7 +166,27 @@ function indexingDeleteIndexNowKeyFile(string $key): void {
  * Zgłasza URL do wszystkich włączonych kanałów i zapisuje w logu.
  * Wywołuj po opublikowaniu artykułu/strony.
  */
+/**
+ * Normalizuje URL przed zgłoszeniem/zalogowaniem do kanonicznej bazy strony.
+ * Naprawia adresy zbudowane przy błędnym BASE_URL z crona (localhost lub
+ * doklejony przedrostek /cron), żeby pasowały do realnych URL-i artykułów.
+ */
+function indexingNormalizeUrl(string $url): string {
+    $base = trim((string)setting('site_url', ''));
+    if ($base === '') return $url;
+    $base = rtrim($base, '/');
+    $parts = @parse_url($url);
+    if (!is_array($parts)) return $url;
+    $path = $parts['path'] ?? '/';
+    // Usuń błędny przedrostek /cron doklejany przez SCRIPT_NAME w /cron/run.php
+    $path = preg_replace('#^/cron(?=/|$)#', '', $path);
+    if ($path === '' || $path[0] !== '/') $path = '/' . $path;
+    $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+    return $base . $path . $query;
+}
+
 function indexingSubmitUrl(string $url): array {
+    $url = indexingNormalizeUrl($url);
     $results = [];
     if (indexingGoogleEnabled()) {
         $r = indexingGoogleSubmitUrl($url);
