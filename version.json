@@ -1,5 +1,5 @@
 {
-    "version": "1.2.6",
+    "version": "1.2.7",
     "released": "2026-06-03",
-    "notes": "Historia indeksowania: ponowne zgłaszanie nieudanych URL-i (np. po przekroczeniu limitu dziennego Google 200 URL/dobę). Czerwony baner z liczbą błędów, przycisk Zgłoś ponownie wszystkie nieudane, checkboxy do selektywnego ponawiania. Zakładka Historia pokazuje ostrzeżenie gdy są nieudane zgłoszenia."
+    "notes": "Updater odporniejszy na cache CDN GitHuba: sprawdzanie wersji wymusza pobranie swiezego pliku (cache-buster) i usuwa ewentualny BOM przed parsowaniem JSON. Dokladniejszy komunikat bledu, gdy version.json jest nieprawidlowy."
 }
