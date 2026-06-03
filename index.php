@@ -9,6 +9,7 @@ $perPage = postsPerPage();
 $posts = getPosts($page, $categoryName, $perPage);
 $total = countPosts($categoryName);
 $totalPages = (int)ceil($total / $perPage);
+$postCatsMap = getCategoriesForPosts(array_map(fn($p) => (int)$p['id'], $posts));
 
 $pageTitle = $categoryName
     ? $categoryName . ' — ' . siteName()
@@ -88,7 +89,11 @@ include __DIR__ . '/includes/header.php';
                         </div>
                     <?php endif; ?>
                     <div class="card__body">
-                        <span class="kicker"><?= e($post['category']) ?></span>
+                        <span class="card__cats">
+                            <?php foreach (($postCatsMap[(int)$post['id']] ?? [$post['category']]) as $ci => $cName): ?>
+                                <span class="kicker<?= $ci === 0 ? ' kicker--primary' : '' ?>"><?= e($cName) ?></span>
+                            <?php endforeach; ?>
+                        </span>
                         <h3 class="card__title"><?= e($post['title']) ?></h3>
                         <?php if ($post['excerpt']): ?>
                             <p class="card__excerpt"><?= e($post['excerpt']) ?></p>

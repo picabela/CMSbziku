@@ -1,5 +1,5 @@
 {
-    "version": "1.2.3",
+    "version": "1.2.4",
     "released": "2026-06-03",
-    "notes": "Nowy moduł indeksowania URL: obsługa Google Indexing API (JWT/OAuth2) oraz protokołu IndexNow. Ręczna konsola zgłoszeń, automatyczne zgłaszanie przy publikacji artykułów i stron, historia logów. Możliwość wgrania faviconiki z panelu Ustawienia."
+    "notes": "Kategorie wielokrotne widoczne (chipy w stylu WordPress) na liście artykułów w panelu i na kartach strony głównej; AI częściej przypisuje kilka pasujących kategorii. Dyskretny przycisk „Panel CMS\" na stronie po zalogowaniu. Hurtowe zgłaszanie artykułów do indeksacji z zakładki Artykuły (z licznikiem zgłoszeń i opcją „tylko niezgłoszone\")."
 }
