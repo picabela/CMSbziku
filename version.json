@@ -1,5 +1,5 @@
 {
-    "version": "1.2.4",
+    "version": "1.2.5",
     "released": "2026-06-03",
-    "notes": "Kategorie wielokrotne widoczne (chipy w stylu WordPress) na liście artykułów w panelu i na kartach strony głównej; AI częściej przypisuje kilka pasujących kategorii. Dyskretny przycisk „Panel CMS\" na stronie po zalogowaniu. Hurtowe zgłaszanie artykułów do indeksacji z zakładki Artykuły (z licznikiem zgłoszeń i opcją „tylko niezgłoszone\")."
+    "notes": "Naprawiono indeksowanie artykułów publikowanych przez cron: BASE_URL liczone z danych żądania było błędne w cronie (localhost lub doklejony /cron), więc zgłoszenia trafiały do historii z niepasującym adresem i kolumna „Indeks.\" pokazywała 0. Dodano kanoniczny adres strony (site_url) zapamiętywany przy każdym wejściu do panelu/strony oraz normalizację URL-i przed zgłoszeniem — teraz zgłoszenia z crona pojawiają się w Historii i są zliczane przy artykułach."
 }

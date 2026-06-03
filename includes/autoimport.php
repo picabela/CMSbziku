@@ -870,7 +870,7 @@ class AutoImporter {
 
         if ($status === 'published' && indexingAutoEnabled()) {
             $p = $this->pdo->query("SELECT slug,category FROM posts WHERE id=$postId")->fetch();
-            if ($p) indexingSubmitUrl(postUrl($p));
+            if ($p) indexingSubmitUrl(postIndexUrl($p));
         }
 
         return $postId;
