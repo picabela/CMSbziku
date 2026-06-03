@@ -1,5 +1,5 @@
 {
-    "version": "1.2.2",
-    "released": "2026-06-02",
-    "notes": "Naprawiono krytyczny błąd: na serwerach ze starszym/restrykcyjnym SQLite zapytanie powiązanych artykułów (HAVING bez GROUP BY) wywalało render artykułów z tagami — znikała stopka, sekcja Przeczytaj również i oceny. Przepisane na podzapytanie z WHERE."
+    "version": "1.2.3",
+    "released": "2026-06-03",
+    "notes": "Nowy moduł indeksowania URL: obsługa Google Indexing API (JWT/OAuth2) oraz protokołu IndexNow. Ręczna konsola zgłoszeń, automatyczne zgłaszanie przy publikacji artykułów i stron, historia logów. Możliwość wgrania faviconiki z panelu Ustawienia."
 }
