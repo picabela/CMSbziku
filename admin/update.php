@@ -50,6 +50,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        if ($action === 'save_settings') {
+            setSetting('update_check_enabled', isset($_POST['update_check_enabled']) ? '1' : '0');
+            setSetting('update_auto_install', isset($_POST['update_auto_install']) ? '1' : '0');
+            $hrs = (int)($_POST['update_check_interval_hours'] ?? 6);
+            setSetting('update_check_interval_hours', (string)max(1, min(168, $hrs)));
+            $flash = ['type' => 'success', 'msg' => 'Ustawienia automatycznych aktualizacji zapisane.'];
+        }
+
         if ($action === 'restore') {
             $name = $_POST['backup'] ?? '';
             @set_time_limit(300);
@@ -111,6 +119,50 @@ function updaterFmtBytes(int $b): string {
                 <?php endif; ?>
             <?php endif; ?>
         <?php endif; ?>
+    </section>
+
+    <section class="settings-card">
+        <h2>Automatyczne sprawdzanie aktualizacji (cron)</h2>
+        <p class="hint">CMS może sprawdzać dostępność nowej wersji przy okazji tego samego crona, który publikuje artykuły (<code>/cron/run.php</code> lub <code>bin/auto.php</code>) — nie potrzeba osobnego zadania.</p>
+
+        <?php
+        $lastTs   = (int)setting('update_check_last_ts', '0');
+        $lastErr  = trim((string)setting('update_check_last_error', ''));
+        $autoRes  = trim((string)setting('update_auto_last_result', ''));
+        ?>
+        <form method="post" class="settings-form" style="margin-top:.75rem">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="action" value="save_settings">
+
+            <label class="checkbox" style="display:block;margin-bottom:.6rem">
+                <input type="checkbox" name="update_check_enabled" value="1" <?= setting('update_check_enabled', '1') === '1' ? 'checked' : '' ?>>
+                Sprawdzaj dostępność aktualizacji podczas crona (pokaż komunikat w panelu)
+            </label>
+
+            <label class="checkbox" style="display:block;margin-bottom:.6rem">
+                <input type="checkbox" name="update_auto_install" value="1" <?= setting('update_auto_install', '0') === '1' ? 'checked' : '' ?>>
+                <strong>Instaluj aktualizacje automatycznie</strong> przy cronie (tylko gdy zaznaczone)
+            </label>
+            <p class="hint" style="margin:0 0 .8rem 1.6rem">Gdy włączone, nowa wersja zostanie zainstalowana sama podczas najbliższego cronu (z automatyczną kopią zapasową kodu; baza, media, <code>config.php</code> i <code>.htaccess</code> pozostają nietknięte). Gdy wyłączone, dostaniesz tylko komunikat i zdecydujesz ręcznie.</p>
+
+            <label style="display:block;margin-bottom:.8rem">
+                Częstotliwość sprawdzania (godziny)
+                <input type="number" name="update_check_interval_hours" min="1" max="168" value="<?= e(setting('update_check_interval_hours', '6')) ?>" style="width:6rem;margin-left:.5rem">
+            </label>
+
+            <button type="submit" class="btn btn--primary">Zapisz ustawienia</button>
+        </form>
+
+        <dl class="info-list" style="margin-top:1rem">
+            <dt>Ostatnie sprawdzenie</dt>
+            <dd><?= $lastTs > 0 ? e(date('Y-m-d H:i', $lastTs)) : 'jeszcze nie sprawdzano' ?></dd>
+            <?php if ($lastErr !== ''): ?>
+                <dt>Ostatni błąd sprawdzania</dt><dd style="color:#b91c1c"><?= e($lastErr) ?></dd>
+            <?php endif; ?>
+            <?php if ($autoRes !== ''): ?>
+                <dt>Ostatnia auto-instalacja</dt><dd><?= e($autoRes) ?></dd>
+            <?php endif; ?>
+        </dl>
     </section>
 
     <?php if ($updateLog !== null): ?>

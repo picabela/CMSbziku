@@ -1,5 +1,5 @@
 {
-    "version": "1.2.7",
+    "version": "1.2.8",
     "released": "2026-06-03",
-    "notes": "Updater odporniejszy na cache CDN GitHuba: sprawdzanie wersji wymusza pobranie swiezego pliku (cache-buster) i usuwa ewentualny BOM przed parsowaniem JSON. Dokladniejszy komunikat bledu, gdy version.json jest nieprawidlowy."
+    "notes": "Sprawdzanie aktualizacji przy okazji crona auto-importu: gdy pojawi sie nowa wersja, w panelu wyswietla sie komunikat (baner). Opcjonalnie, po recznym zaznaczeniu, CMS moze instalowac aktualizacje automatycznie podczas crona (z kopia zapasowa kodu). Konfiguracja i status w zakladce Aktualizacje, z throttlingiem zapytan do GitHuba."
 }

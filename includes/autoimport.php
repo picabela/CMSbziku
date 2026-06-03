@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/indexing.php';
+require_once __DIR__ . '/updater.php';
 /**
  * Auto-import pipeline (dwufazowy, z kolejką w bazie):
  *
@@ -952,7 +953,17 @@ function runAutoImport(?int $maxPosts = null, bool $force = false, bool $verbose
         return ['error' => 'Inny run jest już aktywny.'];
     }
     try {
-        return (new AutoImporter())->run($maxPosts, $force, $verbose);
+        $res = (new AutoImporter())->run($maxPosts, $force, $verbose);
+        // Przy okazji tego samego cronu: sprawdź aktualizacje CMS (z throttlingiem).
+        try {
+            if (function_exists('updaterScheduledCheck') && setting('update_check_enabled', '1') === '1') {
+                $upd = updaterScheduledCheck();
+                if (!empty($upd['checked'])) $res['update_check'] = $upd;
+            }
+        } catch (Throwable $e) {
+            $res['update_check'] = ['ok' => false, 'error' => $e->getMessage()];
+        }
+        return $res;
     } finally {
         flock($fh, LOCK_UN);
         fclose($fh);

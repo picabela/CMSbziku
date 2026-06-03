@@ -251,6 +251,15 @@ function initSchema(PDO $pdo): void {
         'indexing_indexnow_enabled'  => '0',
         'indexing_indexnow_key'      => '',
         'indexing_auto_on_publish'   => '0',
+        // Sprawdzanie aktualizacji przy okazji crona auto-importu
+        'update_check_enabled'        => '1',   // sprawdzaj wersję podczas cronu
+        'update_auto_install'         => '0',   // instaluj automatycznie (tylko gdy włączone)
+        'update_check_interval_hours' => '6',   // jak często odpytywać GitHuba
+        'update_check_last_ts'        => '0',
+        'update_check_last_error'     => '',
+        'update_available_version'    => '',
+        'update_available_notes'      => '',
+        'update_auto_last_result'     => '',
         // Top notice (czytelnie wymyślony przekaz)
         'top_notice_enabled' => '1',
         'top_notice_text' => 'Same fakty, bez lania wody. Czytaj wygodnie na ebooku, tablecie lub w przerwie na kawę.',
