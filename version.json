@@ -1,5 +1,5 @@
 {
-    "version": "1.2.1",
+    "version": "1.2.2",
     "released": "2026-06-02",
-    "notes": "Dodano możliwość wgrania własnego favicona w Ustawieniach (PNG/ICO/SVG)."
+    "notes": "Naprawiono krytyczny błąd: na serwerach ze starszym/restrykcyjnym SQLite zapytanie powiązanych artykułów (HAVING bez GROUP BY) wywalało render artykułów z tagami — znikała stopka, sekcja Przeczytaj również i oceny. Przepisane na podzapytanie z WHERE."
 }
