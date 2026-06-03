@@ -1,5 +1,5 @@
 {
-    "version": "1.2.5",
+    "version": "1.2.6",
     "released": "2026-06-03",
-    "notes": "Naprawiono indeksowanie artykułów publikowanych przez cron: BASE_URL liczone z danych żądania było błędne w cronie (localhost lub doklejony /cron), więc zgłoszenia trafiały do historii z niepasującym adresem i kolumna „Indeks.\" pokazywała 0. Dodano kanoniczny adres strony (site_url) zapamiętywany przy każdym wejściu do panelu/strony oraz normalizację URL-i przed zgłoszeniem — teraz zgłoszenia z crona pojawiają się w Historii i są zliczane przy artykułach."
+    "notes": "Historia indeksowania: ponowne zgłaszanie nieudanych URL-i (np. po przekroczeniu limitu dziennego Google 200 URL/dobę). Czerwony baner z liczbą błędów, przycisk „Zgłoś ponownie wszystkie nieudane", checkboxy do selektywnego ponawiania. Zakładka Historia pokazuje ⚠ gdy są nieudane zgłoszenia."
 }
