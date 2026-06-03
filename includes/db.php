@@ -190,6 +190,16 @@ function initSchema(PDO $pdo): void {
         );
         CREATE INDEX IF NOT EXISTS idx_post_cats_post ON post_categories(post_id);
         CREATE INDEX IF NOT EXISTS idx_post_cats_cat  ON post_categories(cat_name);
+
+        CREATE TABLE IF NOT EXISTS indexing_log (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            url        TEXT    NOT NULL,
+            method     TEXT    NOT NULL,
+            ok         INTEGER NOT NULL DEFAULT 0,
+            response   TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_indexing_log_created ON indexing_log(created_at);
     ");
 
     // Lekkie migracje dla istniejących instalacji
@@ -236,6 +246,11 @@ function initSchema(PDO $pdo): void {
         'site_tagline' => '',
         'site_logo' => '',
         'site_favicon' => '',
+        // Indeksowanie URL (Google Indexing API + IndexNow)
+        'indexing_google_enabled'    => '0',
+        'indexing_indexnow_enabled'  => '0',
+        'indexing_indexnow_key'      => '',
+        'indexing_auto_on_publish'   => '0',
         // Top notice (czytelnie wymyślony przekaz)
         'top_notice_enabled' => '1',
         'top_notice_text' => 'Same fakty, bez lania wody. Czytaj wygodnie na ebooku, tablecie lub w przerwie na kawę.',
