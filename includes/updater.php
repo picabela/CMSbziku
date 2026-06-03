@@ -120,9 +120,9 @@ function updaterHttpGet(string $url, int $timeout = 60): array {
     return [false, '', 'Brak curl oraz allow_url_fopen — nie można pobierać przez HTTP.', 0];
 }
 
-/** URL pliku version.json z gałęzi. */
+/** URL pliku version.json z gałęzi. Cache-buster wymusza świeży plik (CDN raw.githubusercontent cache'uje do ~5 min). */
 function updaterRemoteVersionUrl(): string {
-    return 'https://raw.githubusercontent.com/' . updaterRepo() . '/' . updaterBranch() . '/version.json';
+    return 'https://raw.githubusercontent.com/' . updaterRepo() . '/' . updaterBranch() . '/version.json?nocache=' . time();
 }
 
 /** URL archiwum ZIP gałęzi. */
@@ -139,9 +139,13 @@ function updaterFetchRemoteVersion(): array {
     if (!$ok) {
         return [false, null, 'Nie udało się pobrać informacji o wersji: ' . $err];
     }
+    // Usuń ewentualny BOM/białe znaki, które psują parsowanie JSON.
+    $body = preg_replace('/^\xEF\xBB\xBF/', '', (string)$body);
+    $body = trim($body);
     $data = json_decode($body, true);
     if (!is_array($data) || empty($data['version'])) {
-        return [false, null, 'Plik version.json na GitHubie jest nieprawidłowy.'];
+        $reason = json_last_error() !== JSON_ERROR_NONE ? json_last_error_msg() : 'brak pola version';
+        return [false, null, 'Plik version.json na GitHubie jest nieprawidłowy (' . $reason . ').'];
     }
     return [true, [
         'version'  => (string)$data['version'],
