@@ -137,14 +137,18 @@ function getRelatedPosts(string|array $categories, int $excludeId, int $limit = 
     }
 
     $tagPh = implode(',', array_fill(0, count($tagIds), '?'));
+    // Uwaga: HAVING bez GROUP BY odrzucają starsze/restrykcyjne wersje SQLite,
+    // dlatego scoring liczymy w podzapytaniu i filtrujemy zwykłym WHERE.
     $sql = "
-        SELECT p.*,
-               (SELECT COUNT(*) FROM post_tags pt WHERE pt.post_id = p.id AND pt.tag_id IN ($tagPh)) AS shared_tags,
-               ($catMatchExpr) AS cat_match
-        FROM posts p
-        WHERE p.id != ? AND p.status = 'published'
-        HAVING (shared_tags + cat_match) > 0
-        ORDER BY (shared_tags + cat_match) DESC, p.published_at DESC
+        SELECT * FROM (
+            SELECT p.*,
+                   (SELECT COUNT(*) FROM post_tags pt WHERE pt.post_id = p.id AND pt.tag_id IN ($tagPh)) AS shared_tags,
+                   ($catMatchExpr) AS cat_match
+            FROM posts p
+            WHERE p.id != ? AND p.status = 'published'
+        ) AS scored
+        WHERE (shared_tags + cat_match) > 0
+        ORDER BY (shared_tags + cat_match) DESC, published_at DESC
         LIMIT ?";
     $stmt = $pdo->prepare($sql);
     $i = 1;
