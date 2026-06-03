@@ -71,6 +71,25 @@
     </div>
     <p class="site-footer__copy">&copy; <?= date('Y') ?> <?= e(siteName()) ?>. Wszystkie prawa zastrzeżone.</p>
 </footer>
+<style>.card__cats{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}.card__cats .kicker{margin-bottom:0}</style>
+<?php if (!empty($_SESSION['admin_logged_in'])): ?>
+    <style>
+    .admin-fab{position:fixed;right:18px;bottom:18px;z-index:9999;display:inline-flex;align-items:center;gap:.5rem;
+        padding:.6rem .9rem;border-radius:999px;background:#111;color:#fff;text-decoration:none;font-size:.85rem;
+        font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.25);opacity:.55;transition:opacity .15s ease,transform .15s ease}
+    .admin-fab:hover{opacity:1;transform:translateY(-2px);color:#fff}
+    .admin-fab__label{display:none}
+    .admin-fab:hover .admin-fab__label{display:inline}
+    @media (max-width:640px){.admin-fab{right:12px;bottom:12px;padding:.55rem}}
+    </style>
+    <a href="<?= e(BASE_URL) ?>/admin/index.php" class="admin-fab" title="Przejdź do panelu CMS" aria-label="Przejdź do panelu CMS">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span class="admin-fab__label">Panel CMS</span>
+    </a>
+<?php endif; ?>
 <?= renderCustomCode('body_end') ?>
 </body>
 </html>

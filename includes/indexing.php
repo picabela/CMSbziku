@@ -199,3 +199,21 @@ function indexingGetLog(int $limit = 200): array {
 function indexingClearLog(): void {
     db()->exec('DELETE FROM indexing_log');
 }
+
+/** Czy włączony jest jakikolwiek kanał indeksowania. */
+function indexingAnyEnabled(): bool {
+    return indexingGoogleEnabled() || indexingIndexNowEnabled();
+}
+
+/** Mapa url => liczba zgłoszeń (wszystkie kanały razem). Do oznaczeń na liście artykułów. */
+function indexingSubmissionCounts(): array {
+    $map = [];
+    try {
+        foreach (db()->query('SELECT url, COUNT(*) AS c FROM indexing_log GROUP BY url')->fetchAll() as $r) {
+            $map[$r['url']] = (int)$r['c'];
+        }
+    } catch (\Throwable $e) {
+        // brak tabeli/log — zwróć pusto
+    }
+    return $map;
+}

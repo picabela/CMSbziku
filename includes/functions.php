@@ -253,8 +253,10 @@ function defaultSystemPrompt(): string {
 function defaultCategoryPrompt(): string {
     return "Dostępne kategorie:\n{categories}\n\n"
         . "Wybierz kategorię GŁÓWNĄ, która najlepiej pasuje do artykułu, i wpisz jej nazwę w pole \"category\".\n"
-        . "Jeśli artykuł wyraźnie pasuje także do innych kategorii z powyższej listy, wpisz ich nazwy w pole \"extra_categories\" jako tablicę JSON (maksymalnie {extra_max} dodatkowych). "
-        . "Jeśli pasuje tylko jedna kategoria — zwróć \"extra_categories\": [].\n"
+        . "WAŻNE: większość newsów dotyka kilku obszarów naraz (np. SEO + AI, ADS + AI). "
+        . "Jeśli artykuł porusza temat z więcej niż jednej kategorii z listy — DODAJ te kategorie do pola \"extra_categories\" jako tablicę JSON (maksymalnie {extra_max} dodatkowych). "
+        . "Nie ograniczaj się sztucznie do jednej kategorii, gdy treść realnie pasuje do kilku. "
+        . "Tylko gdy artykuł jest naprawdę wąsko jednotematyczny — zwróć \"extra_categories\": [].\n"
         . "Używaj wyłącznie nazw dokładnie z listy powyżej.";
 }
 
@@ -293,6 +295,40 @@ function getPostCategories(int $postId): array {
     $s->execute([$postId]);
     $cat = $s->fetchColumn();
     return $cat ? [$cat] : [];
+}
+
+/**
+ * Batch: zwraca mapę post_id => [kategorie] (główna pierwsza) dla wielu artykułów.
+ * Unika N+1 przy listach (strona główna, panel). Fallback do posts.category gdy brak junction.
+ */
+function getCategoriesForPosts(array $postIds): array {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $postIds))));
+    if (!$ids) return [];
+    $pdo = db();
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+    // Kategorie z junction
+    $stmt = $pdo->prepare(
+        "SELECT pc.post_id, pc.cat_name, p.category AS primary_cat
+         FROM post_categories pc JOIN posts p ON p.id = pc.post_id
+         WHERE pc.post_id IN ($ph)
+         ORDER BY CASE WHEN pc.cat_name = p.category THEN 0 ELSE 1 END, pc.cat_name"
+    );
+    $stmt->execute($ids);
+    $map = [];
+    foreach ($stmt->fetchAll() as $r) {
+        $map[(int)$r['post_id']][] = $r['cat_name'];
+    }
+    // Fallback dla artykułów bez wpisów junction
+    $missing = array_diff($ids, array_keys($map));
+    if ($missing) {
+        $ph2 = implode(',', array_fill(0, count($missing), '?'));
+        $s = $pdo->prepare("SELECT id, category FROM posts WHERE id IN ($ph2)");
+        $s->execute(array_values($missing));
+        foreach ($s->fetchAll() as $r) {
+            if (!empty($r['category'])) $map[(int)$r['id']] = [$r['category']];
+        }
+    }
+    return $map;
 }
 
 /**
