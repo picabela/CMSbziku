@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/indexing.php';
 /**
  * Auto-import pipeline (dwufazowy, z kolejką w bazie):
  *
@@ -865,6 +866,11 @@ class AutoImporter {
             $maxTags = max(0, min(10, (int)setting('auto_max_tags', '3')));
             $tags = array_slice(array_filter(array_map('trim', $tags)), 0, $maxTags);
             if ($tags) attachTagsToPost($postId, $tags);
+        }
+
+        if ($status === 'published' && indexingAutoEnabled()) {
+            $p = $this->pdo->query("SELECT slug,category FROM posts WHERE id=$postId")->fetch();
+            if ($p) indexingSubmitUrl(postUrl($p));
         }
 
         return $postId;

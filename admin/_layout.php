@@ -26,6 +26,7 @@ $adminTitle = $adminTitle ?? 'Panel redakcji';
             <a href="queue.php">Kolejka</a>
             <a href="auto.php">Auto-import</a>
             <a href="prompts.php">Prompty</a>
+            <a href="indexing.php">Indeksowanie</a>
             <a href="themes.php">Motywy</a>
             <a href="rodo.php">RODO</a>
             <a href="export.php">Eksport/Import</a>

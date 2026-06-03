@@ -1,6 +1,7 @@
 <?php
 $adminTitle = 'Edycja artykułu';
 require __DIR__ . '/_layout.php';
+require __DIR__ . '/../includes/indexing.php';
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $post = $id ? getPostById($id) : null;
@@ -77,6 +78,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt, $post['id']]);
                 attachTagsToPost((int)$post['id'], $tagNames);
                 attachCategoriesToPost((int)$post['id'], $category, $allCatsSelected);
+                if ($status === 'published' && indexingAutoEnabled()) {
+                    indexingSubmitUrl(postUrl($pdo->query("SELECT slug,category FROM posts WHERE id={$post['id']}")->fetch()));
+                }
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł zapisany.'];
             } else {
                 $stmt = $pdo->prepare("INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, tldr, show_toc, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
@@ -84,6 +88,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $newId = (int)$pdo->lastInsertId();
                 attachTagsToPost($newId, $tagNames);
                 attachCategoriesToPost($newId, $category, $allCatsSelected);
+                if ($status === 'published' && indexingAutoEnabled()) {
+                    indexingSubmitUrl(postUrl($pdo->query("SELECT slug,category FROM posts WHERE id=$newId")->fetch()));
+                }
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł utworzony.'];
             }
             header('Location: index.php');
