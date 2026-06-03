@@ -1,8 +1,10 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/updater.php';
 requireLogin();
 rememberSiteUrl();
 $adminTitle = $adminTitle ?? 'Panel redakcji';
+$pendingUpdate = updaterPendingVersion();
 ?><!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -39,3 +41,9 @@ $adminTitle = $adminTitle ?? 'Panel redakcji';
     </div>
 </header>
 <main class="admin-main">
+<?php if ($pendingUpdate !== '' && basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'update.php'): ?>
+    <div class="update-banner" style="background:#eff6ff;border:1px solid #93c5fd;color:#1e40af;border-radius:6px;padding:.75rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+        <span>🎉 Dostępna nowa wersja CMS: <strong>v<?= e($pendingUpdate) ?></strong><?= setting('update_auto_install', '0') === '1' ? ' — zostanie zainstalowana automatycznie przy najbliższym cronie.' : '' ?></span>
+        <a href="<?= e(BASE_URL) ?>/admin/update.php" class="btn btn--primary" style="white-space:nowrap">Przejdź do aktualizacji →</a>
+    </div>
+<?php endif; ?>

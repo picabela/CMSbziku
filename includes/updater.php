@@ -160,6 +160,77 @@ function updaterIsNewer(string $remote, string $local): bool {
 }
 
 /**
+ * Zwraca oczekującą (nowszą) wersję zapisaną przez cron, jeśli wciąż jest
+ * nowsza od zainstalowanej — w przeciwnym razie pusty string. Tania (bez sieci).
+ */
+function updaterPendingVersion(): string {
+    $v = trim((string)setting('update_available_version', ''));
+    if ($v === '') return '';
+    return updaterIsNewer($v, updaterCurrentVersion()['version']) ? $v : '';
+}
+
+/**
+ * Sprawdzenie aktualizacji wywoływane z crona (przy okazji auto-importu).
+ * - Throttluje do update_check_interval_hours, żeby nie odpytywać GitHuba za często.
+ * - Zapisuje wynik w ustawieniach (baner w panelu czyta je bez sieci).
+ * - Jeśli update_auto_install = 1 i jest nowsza wersja oraz środowisko OK —
+ *   instaluje aktualizację automatycznie.
+ *
+ * Zwraca tablicę z opisem tego, co zaszło (do logu cronu).
+ */
+function updaterScheduledCheck(bool $force = false): array {
+    if (!$force) {
+        $interval = max(1, (int)setting('update_check_interval_hours', '6'));
+        $last = (int)setting('update_check_last_ts', '0');
+        if ($last > 0 && (time() - $last) < $interval * 3600) {
+            return ['checked' => false, 'reason' => 'throttled'];
+        }
+    }
+
+    [$ok, $data, $err] = updaterFetchRemoteVersion();
+    setSetting('update_check_last_ts', (string)time());
+
+    if (!$ok) {
+        setSetting('update_check_last_error', (string)$err);
+        return ['checked' => true, 'ok' => false, 'error' => $err];
+    }
+    setSetting('update_check_last_error', '');
+
+    $local   = updaterCurrentVersion()['version'];
+    $isNewer = updaterIsNewer($data['version'], $local);
+    setSetting('update_available_version', $isNewer ? $data['version'] : '');
+    setSetting('update_available_notes',   $isNewer ? (string)$data['notes'] : '');
+
+    $result = ['checked' => true, 'ok' => true, 'is_newer' => $isNewer, 'version' => $data['version'], 'local' => $local];
+
+    // Automatyczna instalacja — TYLKO gdy użytkownik świadomie ją włączył.
+    if ($isNewer && setting('update_auto_install', '0') === '1') {
+        if (updaterRequirementsOk(updaterCheckRequirements())) {
+            @set_time_limit(300);
+            [$uok, $log, $uerr] = updaterRunUpdate();
+            if ($uok) {
+                $newV = updaterCurrentVersion()['version'];
+                setSetting('update_auto_last_result', 'OK: zaktualizowano do v' . $newV . ' (' . date('Y-m-d H:i') . ')');
+                setSetting('update_available_version', '');
+                setSetting('update_available_notes', '');
+                $result['auto_installed'] = true;
+                $result['auto_version'] = $newV;
+            } else {
+                setSetting('update_auto_last_result', 'BŁĄD: ' . $uerr . ' (' . date('Y-m-d H:i') . ')');
+                $result['auto_installed'] = false;
+                $result['auto_error'] = $uerr;
+            }
+        } else {
+            setSetting('update_auto_last_result', 'POMINIĘTO: środowisko nie spełnia wymagań aktualizacji (' . date('Y-m-d H:i') . ')');
+            $result['auto_installed'] = false;
+            $result['auto_error'] = 'requirements';
+        }
+    }
+
+    return $result;
+}
+
+/**
  * Sprawdza wymagania środowiska potrzebne do aktualizacji.
  * Zwraca listę [label, ok(bool), detail].
  */
