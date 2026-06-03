@@ -107,11 +107,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
         header('Location: indexing.php#google'); exit;
     }
 
+    /* --- Zgłoś ponownie wszystkie nieudane --- */
+    if ($action === 'resubmit_failed') {
+        if (!indexingAnyEnabled()) {
+            $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Żaden kanał indeksowania nie jest włączony.'];
+            header('Location: indexing.php?tab=history'); exit;
+        }
+        $failed = indexingFailedUrls();
+        if (empty($failed)) {
+            $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Brak nieudanych zgłoszeń do ponowienia.'];
+        } else {
+            $ok = $err = 0;
+            foreach ($failed as $row) {
+                $res = indexingSubmitUrl($row['url']);
+                foreach ($res as $r) { $r['ok'] ? $ok++ : $err++; }
+            }
+            $_SESSION['flash'] = ['type' => $err === 0 ? 'success' : 'error',
+                'msg' => 'Ponowiono ' . count($failed) . ' URL(i). Sukces: ' . $ok . ', Błędy: ' . $err . '.'];
+        }
+        header('Location: indexing.php?tab=history'); exit;
+    }
+
+    /* --- Zgłoś ponownie zaznaczone URL-e --- */
+    if ($action === 'resubmit_selected') {
+        if (!indexingAnyEnabled()) {
+            $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Żaden kanał indeksowania nie jest włączony.'];
+            header('Location: indexing.php?tab=history'); exit;
+        }
+        $urls = array_filter(array_map('trim', (array)($_POST['resubmit_urls'] ?? [])));
+        if (empty($urls)) {
+            $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Nie zaznaczono żadnego URL.'];
+        } else {
+            $ok = $err = 0;
+            foreach ($urls as $url) {
+                $res = indexingSubmitUrl($url);
+                foreach ($res as $r) { $r['ok'] ? $ok++ : $err++; }
+            }
+            $_SESSION['flash'] = ['type' => $err === 0 ? 'success' : 'error',
+                'msg' => 'Ponowiono ' . count($urls) . ' URL(i). Sukces: ' . $ok . ', Błędy: ' . $err . '.'];
+        }
+        header('Location: indexing.php?tab=history'); exit;
+    }
+
     /* --- Wyczyść log --- */
     if ($action === 'clear_log') {
         indexingClearLog();
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Historia wyczyszczona.'];
-        header('Location: indexing.php#history'); exit;
+        header('Location: indexing.php?tab=history'); exit;
     }
 }
 
@@ -119,6 +161,7 @@ $googleKeyExists = is_file(indexingGoogleKeyPath());
 $googleKeyData   = indexingGoogleKeyData();
 $indexNowKey     = indexingIndexNowKey();
 $log             = indexingGetLog(150);
+$failedUrls      = indexingFailedUrls();
 $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
 ?>
 
@@ -137,7 +180,7 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
             'google'   => 'Google API',
             'indexnow' => 'IndexNow',
             'general'  => 'Automatyzacja',
-            'history'  => 'Historia (' . count($log) . ')',
+            'history'  => 'Historia (' . count($log) . ')' . (count($failedUrls) ? ' ⚠' : ''),
         ] as $t => $label): ?>
             <a href="?tab=<?= $t ?>#<?= $t ?>" id="tab-<?= $t ?>"
                style="padding:.6rem 1.1rem;font-size:.9rem;font-weight:500;text-decoration:none;border-bottom:2px solid <?= $tab === $t ? '#2540b8' : 'transparent' ?>;color:<?= $tab === $t ? '#2540b8' : '#6b7280' ?>;margin-bottom:-2px">
@@ -311,23 +354,55 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
 
     <?php /* ========== HISTORIA ========== */ elseif ($tab === 'history'): ?>
     <section class="settings-card" id="history">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-            <h2 style="margin:0">Historia zgłoszeń</h2>
-            <?php if ($log): ?>
-                <form method="post">
-                    <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
-                    <input type="hidden" name="action" value="clear_log">
-                    <button type="submit" class="btn" onclick="return confirm('Wyczyścić całą historię?')">Wyczyść</button>
-                </form>
-            <?php endif; ?>
-        </div>
+
         <?php if (!$log): ?>
+            <h2 style="margin-top:0">Historia zgłoszeń</h2>
             <p class="hint">Brak wpisów. Historia pojawi się po pierwszym zgłoszeniu URL.</p>
         <?php else: ?>
+
+        <?php /* Baner z nieudanymi + szybki przycisk */ ?>
+        <?php if ($failedUrls): ?>
+            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:.75rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+                <span style="color:#b91c1c;font-weight:600">
+                    ✗ <?= count($failedUrls) ?> URL<?= count($failedUrls) > 1 ? '-i' : '' ?> z ostatnim nieudanym zgłoszeniem
+                    <?php if (in_array(true, array_map(fn($r) => str_contains((string)$r['response'], '429') || str_contains((string)$r['response'], 'quota'), $failedUrls))): ?>
+                        — prawdopodobnie przekroczono limit dzienny Google (200 URL/dobę)
+                    <?php endif; ?>
+                </span>
+                <form method="post" style="display:inline">
+                    <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+                    <input type="hidden" name="action" value="resubmit_failed">
+                    <button type="submit" class="btn btn--primary"
+                        onclick="return confirm('Zgłosić ponownie <?= count($failedUrls) ?> nieudanych URL(i)?')"
+                        <?= indexingAnyEnabled() ? '' : 'disabled title="Włącz kanał indeksowania"' ?>>
+                        ↻ Zgłoś ponownie wszystkie nieudane
+                    </button>
+                </form>
+            </div>
+        <?php endif; ?>
+
+        <form method="post" id="history-form">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="action" value="resubmit_selected">
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem">
+                <h2 style="margin:0">Historia zgłoszeń</h2>
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+                    <?php if ($failedUrls): ?>
+                        <button type="submit" class="btn" id="resubmit-sel-btn" disabled
+                            <?= indexingAnyEnabled() ? '' : 'title="Włącz kanał indeksowania"' ?>>
+                            ↻ Zgłoś zaznaczone (<span id="sel-count">0</span>)
+                        </button>
+                    <?php endif; ?>
+                    <button type="button" class="btn" form="" onclick="submitClearLog()">Wyczyść historię</button>
+                </div>
+            </div>
+
             <div style="overflow-x:auto">
                 <table style="width:100%;border-collapse:collapse;font-size:.82rem">
                     <thead>
                         <tr style="background:#f3f4f6;text-align:left">
+                            <?php if ($failedUrls): ?><th style="padding:.5rem .5rem;width:2rem"></th><?php endif; ?>
                             <th style="padding:.5rem .75rem;white-space:nowrap">Data</th>
                             <th style="padding:.5rem .75rem;white-space:nowrap">Kanał</th>
                             <th style="padding:.5rem .75rem;white-space:nowrap">Status</th>
@@ -336,15 +411,32 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($log as $row): ?>
-                            <tr style="border-top:1px solid #e5e7eb">
+                        <?php
+                        // Zbierz URL-e nieudane (ostatni wpis = błąd) dla szybkiego sprawdzania
+                        $failedUrlSet = array_flip(array_column($failedUrls, 'url'));
+                        ?>
+                        <?php foreach ($log as $row):
+                            $isFailed = !$row['ok'] && isset($failedUrlSet[$row['url']]);
+                        ?>
+                            <tr style="border-top:1px solid #e5e7eb;<?= $isFailed ? 'background:#fff8f8' : '' ?>">
+                                <?php if ($failedUrls): ?>
+                                    <td style="padding:.4rem .5rem;text-align:center">
+                                        <?php if ($isFailed): ?>
+                                            <input type="checkbox" name="resubmit_urls[]"
+                                                value="<?= e($row['url']) ?>"
+                                                class="resubmit-check"
+                                                title="Zaznacz do ponownego zgłoszenia"
+                                                style="cursor:pointer">
+                                        <?php endif; ?>
+                                    </td>
+                                <?php endif; ?>
                                 <td style="padding:.4rem .75rem;white-space:nowrap;color:#6b7280"><?= e(substr($row['created_at'], 0, 16)) ?></td>
                                 <td style="padding:.4rem .75rem;white-space:nowrap;font-weight:500"><?= e($row['method']) ?></td>
                                 <td style="padding:.4rem .75rem;white-space:nowrap">
                                     <?php if ($row['ok']): ?>
                                         <span style="color:#16a34a;font-weight:600">✓ OK</span>
                                     <?php else: ?>
-                                        <span style="color:#dc2626;font-weight:600">✗ Błąd</span>
+                                        <span style="color:#dc2626;font-weight:600" title="<?= e($row['response']) ?>">✗ Błąd</span>
                                     <?php endif; ?>
                                 </td>
                                 <td style="padding:.4rem .75rem;word-break:break-all;max-width:300px">
@@ -356,8 +448,32 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
                     </tbody>
                 </table>
             </div>
+        </form>
+
         <?php endif; ?>
     </section>
+
+    <form id="form-clear-log" method="post" style="display:none">
+        <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+        <input type="hidden" name="action" value="clear_log">
+    </form>
+    <script>
+    function submitClearLog() {
+        if (confirm('Wyczyścić całą historię zgłoszeń?')) document.getElementById('form-clear-log').submit();
+    }
+    (function(){
+        const checks = document.querySelectorAll('.resubmit-check');
+        const btn    = document.getElementById('resubmit-sel-btn');
+        const cnt    = document.getElementById('sel-count');
+        if (!btn || !checks.length) return;
+        function refresh() {
+            const n = document.querySelectorAll('.resubmit-check:checked').length;
+            cnt.textContent = n;
+            btn.disabled = n === 0 <?= indexingAnyEnabled() ? '' : '|| true' ?>;
+        }
+        checks.forEach(c => c.addEventListener('change', refresh));
+    })();
+    </script>
     <?php endif; ?>
 </div>
 <?php require __DIR__ . '/_footer.php';

@@ -220,6 +220,26 @@ function indexingClearLog(): void {
     db()->exec('DELETE FROM indexing_log');
 }
 
+/**
+ * Zwraca unikalne URL-e, których OSTATNI wpis w logu ma ok=0 (błąd).
+ * Używane do ponownego zgłaszania po przekroczeniu limitu dziennego itp.
+ */
+function indexingFailedUrls(): array {
+    try {
+        return db()->query(
+            "SELECT url, method, response, created_at
+             FROM indexing_log AS l
+             WHERE id = (
+                 SELECT id FROM indexing_log WHERE url = l.url ORDER BY id DESC LIMIT 1
+             )
+             AND ok = 0
+             ORDER BY created_at DESC"
+        )->fetchAll();
+    } catch (\Throwable $e) {
+        return [];
+    }
+}
+
 /** Czy włączony jest jakikolwiek kanał indeksowania. */
 function indexingAnyEnabled(): bool {
     return indexingGoogleEnabled() || indexingIndexNowEnabled();
