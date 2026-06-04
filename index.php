@@ -76,13 +76,12 @@ if ($page === 1) {
         $item = [
             '@type' => 'ListItem',
             'position' => $idx + 1,
-            'url' => $spUrl,
             'item' => [
                 '@type' => 'NewsArticle',
                 'headline' => $sp['title'],
                 'url' => $spUrl,
-                'datePublished' => $sp['published_at'],
-                'dateModified' => $sp['updated_at'] ?? $sp['published_at'],
+                'datePublished' => date('c', strtotime($sp['published_at'])),
+                'dateModified' => date('c', strtotime($sp['updated_at'] ?: $sp['published_at'])),
                 'description' => $sp['excerpt'] ?? '',
                 'inLanguage' => SITE_LANG,
                 'publisher' => ['@id' => BASE_URL . '/#organization'],

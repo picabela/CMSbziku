@@ -1,5 +1,5 @@
 {
-    "version": "1.2.9",
+    "version": "1.2.10",
     "released": "2026-06-04",
-    "notes": "Dane strukturalne schema.org na stronie glownej: pelny graf @graph z NewsMediaOrganization (logo wydawcy), CollectionPage, ItemList z artykulami NewsArticle (karuzela w wynikach Google) oraz WebSite z SearchAction (Sitelinks Searchbox). Poprawia widocznosc w wyszukiwarce i przechodzi test Rich Results dla strony glownej."
+    "notes": "Poprawki schema.org na stronie glownej: usunieto zduplikowana wlasciwosc url z ListItem (blad krytyczny Google Rich Results), dodano strefe czasowa do dat datePublished i dateModified w NewsArticle."
 }
