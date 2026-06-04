@@ -318,8 +318,8 @@ $logoFile = setting('site_logo');
             <label class="checkbox"><input type="checkbox" name="outbound_nofollow" value="1" <?= setting('outbound_nofollow', '0') === '1' ? 'checked' : '' ?>> <strong>Linki wychodzące jako <code>nofollow</code></strong> (globalnie)</label>
             <p class="hint">Domyślnie wyłączone (linki dofollow). Po włączeniu wszystkie linki na zewnętrzne domeny w treści artykułów dostają <code>rel="nofollow noopener"</code>. Można też ustawić per-artykuł w edytorze.</p>
 
-            <label class="checkbox"><input type="checkbox" name="news_sitemap_enabled" value="1" <?= setting('news_sitemap_enabled', '1') === '1' ? 'checked' : '' ?>> <strong>Google News Sitemap</strong> (<a href="<?= e(BASE_URL) ?>/sitemap_news.xml" target="_blank">/sitemap_news.xml</a>)</label>
-            <p class="hint">Osobna mapa z artykułami z ostatnich 2 dni — crawler Google News odwiedza ją bardzo często, co przyspiesza indeksację świeżych newsów.</p>
+            <label class="checkbox"><input type="checkbox" name="news_sitemap_enabled" value="1" <?= setting('news_sitemap_enabled', '1') === '1' ? 'checked' : '' ?>> <strong>Google News Sitemap</strong> (<a href="<?= e(BASE_URL) ?>/sitemap_news.php" target="_blank">/sitemap_news.php</a>)</label>
+            <p class="hint">Osobna mapa z artykułami z ostatnich 2 dni — crawler Google News odwiedza ją bardzo często, co przyspiesza indeksację świeżych newsów. Zgłoś ten adres w Google Search Console. Działa też ładny URL <code>/sitemap_news.xml</code>, jeśli serwer ma zaktualizowany <code>.htaccess</code>.</p>
 
             <label class="checkbox"><input type="checkbox" name="webp_conversion" value="1" <?= setting('webp_conversion', '1') === '1' ? 'checked' : '' ?>> <strong>Auto-konwersja WebP</strong> przy uploadzie obrazów</label>
             <p class="hint">Średnio 40% mniej KB → lepsze Core Web Vitals. Wymaga PHP-GD z obsługą WebP. <?= function_exists('imagewebp') ? '<strong style="color:green">✓ dostępne</strong>' : '<strong style="color:red">✗ niedostępne</strong>' ?></p>
