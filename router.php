@@ -23,6 +23,11 @@ if (preg_match('#^/sitemap\.xml$#', $uri)) {
     return true;
 }
 
+if (preg_match('#^/sitemap_news\.xml$#', $uri)) {
+    require __DIR__ . '/sitemap_news.php';
+    return true;
+}
+
 if (preg_match('#^/kontakt/?$#', $uri)) {
     require __DIR__ . '/kontakt.php';
     return true;

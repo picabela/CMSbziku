@@ -1,5 +1,5 @@
 {
-    "version": "1.2.10",
+    "version": "1.3.0",
     "released": "2026-06-04",
-    "notes": "Poprawki schema.org na stronie glownej: usunieto zduplikowana wlasciwosc url z ListItem (blad krytyczny Google Rich Results), dodano strefe czasowa do dat datePublished i dateModified w NewsArticle."
+    "notes": "Pakiet SEO i szybsza indeksacja: Google News Sitemap (/sitemap_news.xml) z artykulami z ostatnich 2 dni, linkowanie wewnetrzne tekst-do-artykulow po wspolnych tagach i kategoriach, linki wychodzace jako nofollow (globalnie oraz per-artykul), dane strukturalne FAQPage pojawiajace sie tylko gdy artykul ma pytania, breadcrumb i schema na stronach kategorii, preload obrazu LCP na stronie glownej, WebP na kartach artykulow, self-referencing canonical dla stron paginowanych oraz noindex dla wynikow wyszukiwania."
 }

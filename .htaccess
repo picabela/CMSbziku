@@ -30,6 +30,9 @@ DirectoryIndex index.php index.html
     # sitemap.xml -> sitemap.php
     RewriteRule ^sitemap\.xml$ sitemap.php [L]
 
+    # sitemap_news.xml -> sitemap_news.php (Google News)
+    RewriteRule ^sitemap_news\.xml$ sitemap_news.php [L]
+
     # llms.txt -> llms.php (dynamiczny)
     RewriteRule ^llms\.txt$ llms.php [L]
 

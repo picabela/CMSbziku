@@ -32,7 +32,7 @@ include __DIR__ . '/includes/header.php';
         <h1 class="article__title"><?= e($page['title']) ?></h1>
     </header>
     <div class="article__content">
-        <?= $page['content'] ?>
+        <?= applyOutboundNofollow($page['content'], setting('outbound_nofollow', '0') === '1') ?>
     </div>
 </article>
 

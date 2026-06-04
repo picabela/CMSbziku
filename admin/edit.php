@@ -37,6 +37,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (mb_strlen($tldr) > 320) $tldr = mb_substr($tldr, 0, 320);
         $showTocInput = $_POST['show_toc'] ?? 'global';
         $showToc = $showTocInput === 'yes' ? 1 : ($showTocInput === 'no' ? 0 : null);
+        $nofollowLinks = isset($_POST['nofollow_links']) ? 1 : 0;
+
+        // FAQ — pary pytanie/odpowiedź → JSON (puste pary pomijamy)
+        $faqQ = $_POST['faq_q'] ?? [];
+        $faqA = $_POST['faq_a'] ?? [];
+        $faqPairs = [];
+        if (is_array($faqQ)) {
+            foreach ($faqQ as $fi => $fq) {
+                $fq = trim((string)$fq);
+                $fa = trim((string)($faqA[$fi] ?? ''));
+                if ($fq !== '' && $fa !== '') $faqPairs[] = ['q' => $fq, 'a' => $fa];
+            }
+        }
+        $faqJson = $faqPairs ? json_encode($faqPairs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null;
 
         if ($title === '') $errors[] = 'Tytuł jest wymagany.';
         if ($content === '') $errors[] = 'Treść jest wymagana.';
@@ -74,8 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $slug = uniqueSlug($slugBase, $post['id'] ?? null);
             $pdo = db();
             if ($post) {
-                $stmt = $pdo->prepare("UPDATE posts SET slug=?, title=?, subtitle=?, excerpt=?, content=?, featured_image=?, featured_image_alt=?, category=?, author=?, meta_title=?, meta_description=?, meta_keywords=?, status=?, tldr=?, show_toc=?, published_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?");
-                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt, $post['id']]);
+                $stmt = $pdo->prepare("UPDATE posts SET slug=?, title=?, subtitle=?, excerpt=?, content=?, featured_image=?, featured_image_alt=?, category=?, author=?, meta_title=?, meta_description=?, meta_keywords=?, status=?, tldr=?, show_toc=?, nofollow_links=?, faq_json=?, published_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?");
+                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $nofollowLinks, $faqJson, $publishedAt, $post['id']]);
                 attachTagsToPost((int)$post['id'], $tagNames);
                 attachCategoriesToPost((int)$post['id'], $category, $allCatsSelected);
                 if ($status === 'published' && indexingAutoEnabled()) {
@@ -83,8 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł zapisany.'];
             } else {
-                $stmt = $pdo->prepare("INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, tldr, show_toc, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt]);
+                $stmt = $pdo->prepare("INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, tldr, show_toc, nofollow_links, faq_json, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $nofollowLinks, $faqJson, $publishedAt]);
                 $newId = (int)$pdo->lastInsertId();
                 attachTagsToPost($newId, $tagNames);
                 attachCategoriesToPost($newId, $category, $allCatsSelected);
@@ -103,6 +117,7 @@ $allCats = allCategories();
 $existingTags = $post ? getPostTags((int)$post['id']) : [];
 $existingTagsCsv = implode(', ', array_map(fn($t) => $t['name'], $existingTags));
 $existingPostCats = $post ? getPostCategories((int)$post['id']) : [];
+$existingFaq = postFaqItems($post);
 $maxCatsAllowed = maxCategoriesPerPost();
 ?>
 <div class="admin-page admin-page--editor">
@@ -227,6 +242,26 @@ $maxCatsAllowed = maxCategoriesPerPost();
                     <label>Słowa kluczowe
                         <input type="text" name="meta_keywords" value="<?= e($post['meta_keywords'] ?? '') ?>" placeholder="seo, geo, ai">
                     </label>
+                    <label class="checkbox" style="margin-top:.5rem">
+                        <input type="checkbox" name="nofollow_links" value="1" <?= (int)($post['nofollow_links'] ?? 0) === 1 ? 'checked' : '' ?>>
+                        Linki wychodzące w tym artykule jako <code>nofollow</code>
+                    </label>
+                    <small class="hint">Nadpisuje ustawienie globalne tylko dla tego artykułu. Linki wewnętrzne pozostają dofollow.</small>
+                </fieldset>
+
+                <fieldset>
+                    <legend>FAQ (dane strukturalne)</legend>
+                    <small class="hint">Dodaj pytania i odpowiedzi — pojawią się jako sekcja na stronie oraz znacznik <code>FAQPage</code> w Google. Zostaw puste, by FAQ się nie pojawiało.</small>
+                    <div id="faq-list" style="display:flex;flex-direction:column;gap:.75rem;margin-top:.5rem">
+                        <?php foreach (($existingFaq ?: [['q'=>'','a'=>'']]) as $fi): ?>
+                            <div class="faq-row" style="border:1px solid #e5e7eb;border-radius:6px;padding:.5rem">
+                                <input type="text" name="faq_q[]" value="<?= e($fi['q']) ?>" placeholder="Pytanie" style="margin-bottom:.35rem">
+                                <textarea name="faq_a[]" rows="2" placeholder="Odpowiedź"><?= e($fi['a']) ?></textarea>
+                                <button type="button" class="btn btn--small faq-remove" style="margin-top:.35rem">Usuń</button>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button type="button" class="btn btn--small" id="faq-add" style="margin-top:.5rem">+ Dodaj pytanie</button>
                 </fieldset>
             </aside>
         </div>
@@ -277,6 +312,30 @@ $maxCatsAllowed = maxCategoriesPerPost();
     primary.addEventListener('change', refresh);
     wrap.addEventListener('change', refresh);
     refresh();
+})();
+</script>
+<script>
+(function(){
+    const list = document.getElementById('faq-list');
+    const addBtn = document.getElementById('faq-add');
+    if (!list || !addBtn) return;
+    function rowHtml() {
+        return '<div class="faq-row" style="border:1px solid #e5e7eb;border-radius:6px;padding:.5rem">'
+            + '<input type="text" name="faq_q[]" placeholder="Pytanie" style="margin-bottom:.35rem">'
+            + '<textarea name="faq_a[]" rows="2" placeholder="Odpowiedź"></textarea>'
+            + '<button type="button" class="btn btn--small faq-remove" style="margin-top:.35rem">Usuń</button></div>';
+    }
+    addBtn.addEventListener('click', function(){
+        const tmp = document.createElement('div');
+        tmp.innerHTML = rowHtml();
+        list.appendChild(tmp.firstChild);
+    });
+    list.addEventListener('click', function(e){
+        if (e.target.classList.contains('faq-remove')) {
+            const row = e.target.closest('.faq-row');
+            if (row) row.remove();
+        }
+    });
 })();
 </script>
 <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>

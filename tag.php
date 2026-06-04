@@ -22,7 +22,7 @@ $totalPages = (int)ceil($total / $perPage);
 $label = tagLabel();
 $pageTitle = $label . ': ' . $tag['name'] . ' — ' . siteName();
 $pageDescription = 'Artykuły otagowane „' . $tag['name'] . '" w ' . siteName() . '.';
-$canonical = tagUrl($tag['slug']);
+$canonical = tagUrl($tag['slug']) . ($page > 1 ? '?page=' . $page : '');
 
 if ($totalPages > 1) {
     if ($page > 1) {

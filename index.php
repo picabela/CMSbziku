@@ -17,7 +17,10 @@ $pageTitle = $categoryName
 $pageDescription = $categoryName
     ? 'Wszystkie wiadomości z kategorii ' . $categoryName . ' na ' . SITE_NAME
     : SITE_DESCRIPTION;
-$canonical = $categoryName ? categoryUrl($categoryName) : BASE_URL . '/';
+$canonicalBase = $categoryName ? categoryUrl($categoryName) : BASE_URL . '/';
+// Self-referencing canonical — strony paginowane wskazują na siebie, nie na stronę 1.
+$canonicalSep = str_contains($canonicalBase, '?') ? '&' : '?';
+$canonical = $page > 1 ? $canonicalBase . $canonicalSep . 'page=' . $page : $canonicalBase;
 
 // rel="prev"/"next" dla SEO paginacji
 $paginationBaseUrl = $categoryName ? categoryUrl($categoryName) : BASE_URL . '/';
@@ -110,10 +113,27 @@ if ($page === 1) {
     }
 }
 
+// BreadcrumbList dla stron kategorii
+if ($categoryName) {
+    $sdGraphItems[] = [
+        '@type' => 'BreadcrumbList',
+        '@id' => $canonicalBase . '#breadcrumb',
+        'itemListElement' => [
+            ['@type' => 'ListItem', 'position' => 1, 'name' => 'Strona główna', 'item' => BASE_URL . '/'],
+            ['@type' => 'ListItem', 'position' => 2, 'name' => $categoryName, 'item' => $canonicalBase],
+        ],
+    ];
+}
+
 $structuredData = [
     '@context' => 'https://schema.org',
     '@graph' => $sdGraphItems,
 ];
+
+// Preload obrazu LCP (zdjęcie lead-artykułu na 1. stronie głównej) — przyspiesza LCP.
+if (!$categoryName && $page === 1 && !empty($posts[0]['featured_image'])) {
+    $preloadImage = UPLOAD_URL . '/' . $posts[0]['featured_image'];
+}
 
 include __DIR__ . '/includes/header.php';
 ?>
@@ -136,7 +156,7 @@ include __DIR__ . '/includes/header.php';
             <a href="<?= e(postUrl($lead)) ?>" class="lead-article__link">
                 <?php if ($lead['featured_image']): ?>
                     <div class="lead-article__image">
-                        <img src="<?= e(UPLOAD_URL . '/' . $lead['featured_image']) ?>" alt="<?= e($lead['featured_image_alt'] ?: $lead['title']) ?>" loading="eager" width="1200" height="630">
+                        <?= postPictureTag($lead['featured_image'], $lead['featured_image_alt'] ?: $lead['title'], 1200, 630, 'eager') ?>
                     </div>
                 <?php endif; ?>
                 <div class="lead-article__body">
@@ -158,7 +178,7 @@ include __DIR__ . '/includes/header.php';
                 <a href="<?= e(postUrl($post)) ?>" class="card__link">
                     <?php if ($post['featured_image']): ?>
                         <div class="card__image">
-                            <img src="<?= e(UPLOAD_URL . '/' . $post['featured_image']) ?>" alt="<?= e($post['featured_image_alt'] ?: $post['title']) ?>" loading="lazy" width="600" height="400">
+                            <?= postPictureTag($post['featured_image'], $post['featured_image_alt'] ?: $post['title'], 600, 400) ?>
                         </div>
                     <?php endif; ?>
                     <div class="card__body">

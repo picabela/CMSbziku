@@ -15,7 +15,7 @@ $ogType = $ogType ?? 'website';
 <title><?= e($pageTitle) ?></title>
 <meta name="description" content="<?= e($pageDescription) ?>">
 <link rel="canonical" href="<?= e($canonical) ?>">
-<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+<meta name="robots" content="<?= e($metaRobots ?? 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1') ?>">
 <meta name="author" content="<?= e(SITE_NAME) ?>">
 <meta name="generator" content="bziku CMS">
 
@@ -64,6 +64,11 @@ foreach (array_unique($resourceHints) as $h): ?>
 $logoUrl = siteLogoUrl();
 if ($logoUrl): ?>
 <link rel="preload" as="image" href="<?= e($logoUrl) ?>" fetchpriority="high">
+<?php endif; ?>
+<?php
+// Preload obrazu LCP (np. zdjęcie lead-artykułu na stronie głównej)
+if (!empty($preloadImage)): ?>
+<link rel="preload" as="image" href="<?= e($preloadImage) ?>" fetchpriority="high">
 <?php endif; ?>
 
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
