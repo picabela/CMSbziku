@@ -116,9 +116,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($section === 'seo_geo') {
-            foreach (['toc_enabled_global','auto_generate_tldr','auto_internal_links','webp_conversion','reading_progress_bar','critical_css_inline'] as $k) {
+            foreach (['toc_enabled_global','auto_generate_tldr','auto_internal_links','auto_article_links','outbound_nofollow','news_sitemap_enabled','webp_conversion','reading_progress_bar','critical_css_inline'] as $k) {
                 setSetting($k, isset($_POST[$k]) ? '1' : '0');
             }
+            setSetting('auto_article_links_max', max(1, (int)($_POST['auto_article_links_max'] ?? 4)));
             $flash = ['type' => 'success', 'msg' => 'Ustawienia SEO/GEO zapisane.'];
         }
 
@@ -307,6 +308,18 @@ $logoFile = setting('site_logo');
 
             <label class="checkbox"><input type="checkbox" name="auto_internal_links" value="1" <?= setting('auto_internal_links', '1') === '1' ? 'checked' : '' ?>> <strong>Auto internal linking</strong> — linkuj wzmianki tagów do stron tagów</label>
             <p class="hint">Wzmacnia crawl Google i sygnały silosa contentowego. Każdy tag linkowany tylko raz / artykuł.</p>
+
+            <label class="checkbox"><input type="checkbox" name="auto_article_links" value="1" <?= setting('auto_article_links', '1') === '1' ? 'checked' : '' ?>> <strong>Linkowanie tekst → artykuły</strong> — wstawiaj w treść linki do powiązanych artykułów</label>
+            <p class="hint">Dobiera artykuły po wspólnych tagach/kategoriach i linkuje ich tytuły, gdy pojawią się w tekście. Wzmacnia linkowanie wewnętrzne i czas na stronie.</p>
+            <label style="max-width:220px">Maks. linków do artykułów / tekst
+                <input type="number" name="auto_article_links_max" min="1" max="20" value="<?= e(setting('auto_article_links_max', '4')) ?>">
+            </label>
+
+            <label class="checkbox"><input type="checkbox" name="outbound_nofollow" value="1" <?= setting('outbound_nofollow', '0') === '1' ? 'checked' : '' ?>> <strong>Linki wychodzące jako <code>nofollow</code></strong> (globalnie)</label>
+            <p class="hint">Domyślnie wyłączone (linki dofollow). Po włączeniu wszystkie linki na zewnętrzne domeny w treści artykułów dostają <code>rel="nofollow noopener"</code>. Można też ustawić per-artykuł w edytorze.</p>
+
+            <label class="checkbox"><input type="checkbox" name="news_sitemap_enabled" value="1" <?= setting('news_sitemap_enabled', '1') === '1' ? 'checked' : '' ?>> <strong>Google News Sitemap</strong> (<a href="<?= e(BASE_URL) ?>/sitemap_news.xml" target="_blank">/sitemap_news.xml</a>)</label>
+            <p class="hint">Osobna mapa z artykułami z ostatnich 2 dni — crawler Google News odwiedza ją bardzo często, co przyspiesza indeksację świeżych newsów.</p>
 
             <label class="checkbox"><input type="checkbox" name="webp_conversion" value="1" <?= setting('webp_conversion', '1') === '1' ? 'checked' : '' ?>> <strong>Auto-konwersja WebP</strong> przy uploadzie obrazów</label>
             <p class="hint">Średnio 40% mniej KB → lepsze Core Web Vitals. Wymaga PHP-GD z obsługą WebP. <?= function_exists('imagewebp') ? '<strong style="color:green">✓ dostępne</strong>' : '<strong style="color:red">✗ niedostępne</strong>' ?></p>

@@ -210,6 +210,8 @@ function initSchema(PDO $pdo): void {
     addColumnIfMissing($pdo, 'posts', 'source_attribution', "TEXT");
     addColumnIfMissing($pdo, 'posts', 'tldr', "TEXT");
     addColumnIfMissing($pdo, 'posts', 'show_toc', "INTEGER");  // NULL = global, 0/1 = override
+    addColumnIfMissing($pdo, 'posts', 'nofollow_links', "INTEGER DEFAULT 0");  // 1 = wszystkie linki wych. w artykule nofollow
+    addColumnIfMissing($pdo, 'posts', 'faq_json', "TEXT");  // JSON [{q,a}] — sekcja FAQ + FAQPage schema
 
     // Seed domyślnych kategorii (jeśli pusto)
     if ((int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn() === 0) {
@@ -309,6 +311,10 @@ function initSchema(PDO $pdo): void {
         'toc_enabled_global' => '1',
         'auto_generate_tldr' => '1',
         'auto_internal_links' => '1',
+        'auto_article_links' => '1',     // linkowanie tekstu do innych artykułów (po tagach/kategoriach)
+        'auto_article_links_max' => '4', // max linków do artykułów w jednym tekście
+        'outbound_nofollow' => '0',      // globalnie: linki wychodzące jako nofollow (domyślnie dofollow)
+        'news_sitemap_enabled' => '1',   // Google News Sitemap (/sitemap_news.xml)
         'webp_conversion' => '1',
         'reading_progress_bar' => '1',
         'critical_css_inline' => '1',

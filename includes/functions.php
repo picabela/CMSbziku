@@ -882,6 +882,144 @@ function applyAutoInternalLinks(string $html, int $excludePostId = 0): string {
 }
 
 /**
+ * Linkowanie wewnętrzne tekst→artykuł (opcja B).
+ * Dobiera artykuły powiązane tagami/kategoriami i wstawia w treść linki do nich,
+ * dopasowując ich tytuły (lub kluczowe frazy z tytułu) w tekście bieżącego artykułu.
+ * Linkuje pierwsze trafienie, max N linków, każdy artykuł raz, nie rusza nagłówków/linków/kodu.
+ */
+function applyArticleAutoLinks(string $html, int $currentPostId, string|array $categories = []): string {
+    if (setting('auto_article_links', '1') !== '1') return $html;
+    $maxLinks = max(1, (int)setting('auto_article_links_max', '4'));
+
+    // Kandydaci: artykuły powiązane tagami/kategoriami (z zapasem na nietrafione dopasowania).
+    $candidates = getRelatedPosts($categories ?: [], $currentPostId, $maxLinks * 4);
+    if (!$candidates) return $html;
+
+    // Maskuj bloki, których nie wolno linkować.
+    $blocks = [];
+    $idx = 0;
+    $masked = preg_replace_callback(
+        '#<(a|h1|h2|h3|h4|code|pre)\b[^>]*>.*?</\1>#si',
+        function($m) use (&$blocks, &$idx) {
+            $key = "\0ABLOCK{$idx}\0";
+            $blocks[$key] = $m[0];
+            $idx++;
+            return $key;
+        },
+        $html
+    );
+
+    $linked = 0;
+    foreach ($candidates as $cand) {
+        if ($linked >= $maxLinks) break;
+        if ((int)$cand['id'] === $currentPostId) continue;
+
+        // Frazy do dopasowania: pełny tytuł, a jeśli za długi — pierwsze 4-6 słów.
+        $title = trim((string)$cand['title']);
+        if (mb_strlen($title) < 8) continue;
+        $phrases = [$title];
+        $words = preg_split('/\s+/', $title);
+        if (count($words) > 6) {
+            $phrases[] = implode(' ', array_slice($words, 0, 6));
+            $phrases[] = implode(' ', array_slice($words, 0, 4));
+        }
+
+        $url = postUrl($cand);
+        $done = false;
+        foreach ($phrases as $phrase) {
+            $phrase = trim($phrase, " \t\n\r,.;:—–-");
+            if (mb_strlen($phrase) < 8) continue;
+            $pattern = '/(?<![\p{L}\p{N}\-_>])(' . preg_quote($phrase, '/') . ')(?![\p{L}\p{N}\-_<])/u';
+            $replaced = preg_replace_callback($pattern, function($m) use ($url, &$done) {
+                if ($done) return $m[1];
+                $done = true;
+                return '<a href="' . htmlspecialchars($url, ENT_QUOTES)
+                     . '" class="auto-link auto-link--article">' . $m[1] . '</a>';
+            }, $masked, 1);
+            if ($replaced !== null && $done) { $masked = $replaced; break; }
+        }
+        if ($done) $linked++;
+    }
+
+    foreach ($blocks as $key => $orig) {
+        $masked = str_replace($key, $orig, $masked);
+    }
+    return $masked;
+}
+
+/**
+ * Dodaje rel="nofollow noopener" do linków WYCHODZĄCYCH (na inne domeny).
+ * $force = true gdy artykuł ma flagę nofollow_links albo globalne ustawienie outbound_nofollow.
+ * Linki wewnętrzne (ta sama domena lub względne) pozostają bez zmian.
+ */
+function applyOutboundNofollow(string $html, bool $force): string {
+    if (!$force) return $html;
+    if (stripos($html, '<a') === false) return $html;
+
+    $host = parse_url(siteBaseUrl(), PHP_URL_HOST) ?: ($_SERVER['HTTP_HOST'] ?? '');
+    $host = strtolower(preg_replace('/^www\./', '', (string)$host));
+
+    return preg_replace_callback('#<a\b([^>]*?)href=(["\'])(.*?)\2([^>]*)>#i', function($m) use ($host) {
+        $pre = $m[1]; $q = $m[2]; $href = $m[3]; $post = $m[4];
+        $full = $pre . $post;
+
+        // Tylko absolutne http(s) na inną domenę są "wychodzące".
+        if (!preg_match('#^https?://#i', $href)) return $m[0];
+        $linkHost = strtolower(preg_replace('/^www\./', '', (string)(parse_url($href, PHP_URL_HOST) ?: '')));
+        if ($linkHost === '' || $linkHost === $host) return $m[0];
+
+        // Czy jest już rel?
+        if (preg_match('/\brel=(["\'])(.*?)\1/i', $full, $rm)) {
+            $vals = preg_split('/\s+/', trim($rm[2]));
+            foreach (['nofollow','noopener'] as $need) {
+                if (!in_array($need, $vals, true)) $vals[] = $need;
+            }
+            $newRel = 'rel="' . htmlspecialchars(implode(' ', array_filter($vals)), ENT_QUOTES) . '"';
+            $full = preg_replace('/\brel=(["\']).*?\1/i', $newRel, $full, 1);
+            return '<a ' . trim($full) . ' href=' . $q . $href . $q . '>';
+        }
+        $preTrim = trim($pre);
+        return '<a' . ($preTrim !== '' ? ' ' . $preTrim : '') . ' href=' . $q . $href . $q . ' rel="nofollow noopener"' . ($post !== '' ? ' ' . trim($post) : '') . '>';
+    }, $html);
+}
+
+/**
+ * Parsuje faq_json artykułu do tablicy [['q'=>..., 'a'=>...], ...].
+ * Zwraca pustą tablicę gdy brak/niepoprawne — dzięki temu sekcja i schema FAQ
+ * pojawiają się TYLKO gdy faktycznie są dane (poprawne SEO).
+ */
+function postFaqItems(?array $post): array {
+    if (!$post || empty($post['faq_json'])) return [];
+    $data = json_decode((string)$post['faq_json'], true);
+    if (!is_array($data)) return [];
+    $out = [];
+    foreach ($data as $row) {
+        $q = trim((string)($row['q'] ?? ''));
+        $a = trim((string)($row['a'] ?? ''));
+        if ($q !== '' && $a !== '') $out[] = ['q' => $q, 'a' => $a];
+    }
+    return $out;
+}
+
+/**
+ * Generuje <picture> z WebP (gdy istnieje obok oryginału) + fallback <img>.
+ * Używane na kartach artykułów dla lepszych Core Web Vitals.
+ */
+function postPictureTag(string $file, string $alt, int $w, int $h, string $loading = 'lazy', string $extraImgAttr = ''): string {
+    if ($file === '') return '';
+    $src = UPLOAD_URL . '/' . $file;
+    $webp = preg_replace('/\.[^.]+$/', '.webp', $file);
+    $hasWebp = $webp !== $file && is_file(UPLOAD_DIR . '/' . $webp);
+    $altE = e($alt);
+    $img = '<img src="' . e($src) . '" alt="' . $altE . '" width="' . $w . '" height="' . $h . '" loading="' . e($loading) . '"'
+         . ($loading === 'eager' ? ' fetchpriority="high"' : '') . ($extraImgAttr ? ' ' . $extraImgAttr : '') . '>';
+    if ($hasWebp) {
+        return '<picture><source srcset="' . e(UPLOAD_URL . '/' . $webp) . '" type="image/webp">' . $img . '</picture>';
+    }
+    return $img;
+}
+
+/**
  * Oceny artykułów (1-5 gwiazdek).
  */
 function ratingIpHash(): string {

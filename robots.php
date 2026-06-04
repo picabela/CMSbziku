@@ -61,6 +61,9 @@ Allow: /
 
 # Sitemaps i metadane
 Sitemap: <?= $base ?>/sitemap.xml
+<?php if (setting('news_sitemap_enabled', '1') === '1'): ?>
+Sitemap: <?= $base ?>/sitemap_news.xml
+<?php endif; ?>
 
 # Wskazania dla LLM
 # Pełny llms.txt: <?= $base ?>/llms.txt

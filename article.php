@@ -83,10 +83,28 @@ $breadcrumbData = [
     ],
 ];
 
+// FAQ — tylko gdy artykuł faktycznie ma pytania (poprawne SEO: schema = widoczna treść na stronie)
+$faqItems = postFaqItems($post);
+$faqSchema = null;
+if (!empty($faqItems)) {
+    $faqSchema = [
+        '@context' => 'https://schema.org',
+        '@type' => 'FAQPage',
+        'mainEntity' => array_map(fn($fi) => [
+            '@type' => 'Question',
+            'name' => $fi['q'],
+            'acceptedAnswer' => ['@type' => 'Answer', 'text' => $fi['a']],
+        ], $faqItems),
+    ];
+}
+
 include __DIR__ . '/includes/header.php';
 ?>
 
 <script type="application/ld+json"><?= json_encode($breadcrumbData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?></script>
+<?php if ($faqSchema): ?>
+<script type="application/ld+json"><?= json_encode($faqSchema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?></script>
+<?php endif; ?>
 
 <nav class="breadcrumbs" aria-label="Okruszki">
     <a href="<?= e(BASE_URL) ?>/">Strona główna</a>
@@ -155,8 +173,12 @@ include __DIR__ . '/includes/header.php';
     } else {
         $toc = [];
     }
-    // Auto internal links
+    // Auto internal links: tagi → strony tagów, oraz tekst → powiązane artykuły (opcja B)
     $contentHtml = applyAutoInternalLinks($contentHtml, (int)$post['id']);
+    $contentHtml = applyArticleAutoLinks($contentHtml, (int)$post['id'], $postCategories ?: [$post['category']]);
+    // Linki wychodzące jako nofollow — globalnie lub per-artykuł
+    $forceNofollow = setting('outbound_nofollow', '0') === '1' || (int)($post['nofollow_links'] ?? 0) === 1;
+    $contentHtml = applyOutboundNofollow($contentHtml, $forceNofollow);
     ?>
 
     <?php if ($showToc && count($toc) >= 3): ?>
@@ -175,6 +197,28 @@ include __DIR__ . '/includes/header.php';
     <div class="article__content" itemprop="articleBody">
         <?= $contentHtml ?>
     </div>
+
+    <?php if (!empty($faqItems)): ?>
+        <style>
+        .article__faq{margin:2rem 0;border-top:1px solid #e5e7eb;padding-top:1.25rem}
+        .article__faq-title{margin:0 0 .75rem}
+        .article__faq-item{border:1px solid #e5e7eb;border-radius:8px;padding:.75rem 1rem;margin-bottom:.6rem}
+        .article__faq-q{cursor:pointer;font-weight:600;list-style:none}
+        .article__faq-q::-webkit-details-marker{display:none}
+        .article__faq-q::before{content:"+ ";color:#888}
+        .article__faq-item[open] .article__faq-q::before{content:"– "}
+        .article__faq-a{margin-top:.5rem;color:#374151}
+        </style>
+        <section class="article__faq" aria-label="Najczęściej zadawane pytania">
+            <h2 class="article__faq-title">Najczęściej zadawane pytania</h2>
+            <?php foreach ($faqItems as $fi): ?>
+                <details class="article__faq-item">
+                    <summary class="article__faq-q"><?= e($fi['q']) ?></summary>
+                    <div class="article__faq-a"><p><?= nl2br(e($fi['a'])) ?></p></div>
+                </details>
+            <?php endforeach; ?>
+        </section>
+    <?php endif; ?>
 
     <?php if (setting('ratings_enabled', '1') === '1'): ?>
         <section class="article__rating" aria-label="Oceń ten artykuł" data-post-id="<?= (int)$post['id'] ?>" data-user-rating="<?= (int)($userRating ?? 0) ?>">

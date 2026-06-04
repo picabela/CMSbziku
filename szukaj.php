@@ -41,7 +41,7 @@ if ($q !== '' && mb_strlen($q) >= 2) {
 $totalPages = (int)ceil($total / POSTS_PER_PAGE);
 $pageTitle = $q !== '' ? ('Wyniki dla „' . $q . '" — ' . siteName()) : ('Szukaj — ' . siteName());
 $pageDescription = $q !== '' ? 'Artykuły pasujące do zapytania „' . $q . '" w ' . siteName() : 'Przeszukaj artykuły w ' . siteName();
-$canonical = BASE_URL . '/szukaj' . ($q !== '' ? '?q=' . urlencode($q) : '');
+$canonical = BASE_URL . '/szukaj' . ($q !== '' ? '?q=' . urlencode($q) : '') . ($page > 1 ? ($q !== '' ? '&' : '?') . 'page=' . $page : '');
 
 // Pagination prev/next dla <head>
 if ($totalPages > 1) {
@@ -52,6 +52,9 @@ if ($totalPages > 1) {
         $relNext = BASE_URL . '/szukaj?q=' . urlencode($q) . '&page=' . ($page + 1);
     }
 }
+
+// Strony wyników wyszukiwania: noindex (cienka/duplikatowa treść), ale follow.
+$metaRobots = 'noindex, follow';
 
 include __DIR__ . '/includes/header.php';
 ?>
