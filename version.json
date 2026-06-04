@@ -1,5 +1,5 @@
 {
-    "version": "1.2.8",
-    "released": "2026-06-03",
-    "notes": "Sprawdzanie aktualizacji przy okazji crona auto-importu: gdy pojawi sie nowa wersja, w panelu wyswietla sie komunikat (baner). Opcjonalnie, po recznym zaznaczeniu, CMS moze instalowac aktualizacje automatycznie podczas crona (z kopia zapasowa kodu). Konfiguracja i status w zakladce Aktualizacje, z throttlingiem zapytan do GitHuba."
+    "version": "1.2.9",
+    "released": "2026-06-04",
+    "notes": "Dane strukturalne schema.org na stronie glownej: pelny graf @graph z NewsMediaOrganization (logo wydawcy), CollectionPage, ItemList z artykulami NewsArticle (karuzela w wynikach Google) oraz WebSite z SearchAction (Sitelinks Searchbox). Poprawia widocznosc w wyszukiwarce i przechodzi test Rich Results dla strony glownej."
 }

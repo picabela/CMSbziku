@@ -32,14 +32,88 @@ if ($_totalPagesForRel > 1) {
     }
 }
 
-$structuredData = [
-    '@context' => 'https://schema.org',
+// Build structured data graph
+$sdGraphItems = [];
+
+// Organization / NewsMediaOrganization
+$orgLogo = siteLogoUrl();
+$sdOrg = [
+    '@type' => 'NewsMediaOrganization',
+    '@id' => BASE_URL . '/#organization',
+    'name' => SITE_NAME,
+    'url' => BASE_URL,
+    'description' => SITE_DESCRIPTION,
+];
+if ($orgLogo) {
+    $sdOrg['logo'] = [
+        '@type' => 'ImageObject',
+        'url' => $orgLogo,
+        'width' => 600,
+        'height' => 60,
+    ];
+}
+$sdGraphItems[] = $sdOrg;
+
+// WebPage (CollectionPage)
+$sdGraphItems[] = [
     '@type' => 'CollectionPage',
+    '@id' => $canonical . '#webpage',
+    'url' => $canonical,
     'name' => $pageTitle,
     'description' => $pageDescription,
-    'url' => $canonical,
     'inLanguage' => SITE_LANG,
-    'isPartOf' => ['@type' => 'WebSite', 'name' => SITE_NAME, 'url' => BASE_URL],
+    'isPartOf' => ['@id' => BASE_URL . '/#website'],
+    'about' => ['@id' => BASE_URL . '/#organization'],
+    'publisher' => ['@id' => BASE_URL . '/#organization'],
+];
+
+// ItemList for article carousel (only on page 1)
+if ($page === 1) {
+    $allCardsForSchema = $posts; // $lead is extracted in template later; use full list here
+    $listItems = [];
+    foreach ($allCardsForSchema as $idx => $sp) {
+        $spUrl = postUrl($sp);
+        $item = [
+            '@type' => 'ListItem',
+            'position' => $idx + 1,
+            'url' => $spUrl,
+            'item' => [
+                '@type' => 'NewsArticle',
+                'headline' => $sp['title'],
+                'url' => $spUrl,
+                'datePublished' => $sp['published_at'],
+                'dateModified' => $sp['updated_at'] ?? $sp['published_at'],
+                'description' => $sp['excerpt'] ?? '',
+                'inLanguage' => SITE_LANG,
+                'publisher' => ['@id' => BASE_URL . '/#organization'],
+                'author' => [
+                    '@type' => 'Organization',
+                    '@id' => BASE_URL . '/#organization',
+                ],
+            ],
+        ];
+        if (!empty($sp['featured_image'])) {
+            $item['item']['image'] = [
+                '@type' => 'ImageObject',
+                'url' => UPLOAD_URL . '/' . $sp['featured_image'],
+            ];
+        }
+        $listItems[] = $item;
+    }
+    if (!empty($listItems)) {
+        $sdGraphItems[] = [
+            '@type' => 'ItemList',
+            '@id' => $canonical . '#itemlist',
+            'name' => $pageTitle,
+            'url' => $canonical,
+            'itemListElement' => $listItems,
+        ];
+    }
+}
+
+$structuredData = [
+    '@context' => 'https://schema.org',
+    '@graph' => $sdGraphItems,
 ];
 
 include __DIR__ . '/includes/header.php';

@@ -87,13 +87,15 @@ if (setting('critical_css_inline', '1') === '1' && file_exists($criticalPath)): 
 <?= json_encode([
     '@context' => 'https://schema.org',
     '@type' => 'WebSite',
+    '@id' => BASE_URL . '/#website',
     'name' => SITE_NAME,
     'url' => BASE_URL,
     'description' => SITE_DESCRIPTION,
     'inLanguage' => SITE_LANG,
+    'publisher' => ['@id' => BASE_URL . '/#organization'],
     'potentialAction' => [
         '@type' => 'SearchAction',
-        'target' => BASE_URL . '/szukaj?q={search_term_string}',
+        'target' => ['@type' => 'EntryPoint', 'urlTemplate' => BASE_URL . '/szukaj?q={search_term_string}'],
         'query-input' => 'required name=search_term_string',
     ],
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?>
