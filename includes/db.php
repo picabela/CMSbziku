@@ -206,6 +206,8 @@ function initSchema(PDO $pdo): void {
     addColumnIfMissing($pdo, 'sources', 'source_type', "TEXT DEFAULT 'rss'");
     addColumnIfMissing($pdo, 'sources', 'link_selector', "TEXT");
     addColumnIfMissing($pdo, 'sources', 'max_age_days', "INTEGER");
+    addColumnIfMissing($pdo, 'sources', 'date_selector', "TEXT");     // CSS/XPath elementu z datą na stronie artykułu
+    addColumnIfMissing($pdo, 'sources', 'content_selector', "TEXT");  // CSS/XPath kontenera treści artykułu
     addColumnIfMissing($pdo, 'auto_runs', 'items_enqueued', "INTEGER DEFAULT 0");
     addColumnIfMissing($pdo, 'posts', 'source_attribution', "TEXT");
     addColumnIfMissing($pdo, 'posts', 'tldr', "TEXT");
