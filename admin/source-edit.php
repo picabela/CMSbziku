@@ -23,6 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'language' => trim($_POST['language'] ?? 'en'),
             'source_type' => in_array($_POST['source_type'] ?? '', ['rss','html'], true) ? $_POST['source_type'] : 'rss',
             'link_selector' => trim($_POST['link_selector'] ?? '') ?: null,
+            'date_selector' => trim($_POST['date_selector'] ?? '') ?: null,
+            'content_selector' => trim($_POST['content_selector'] ?? '') ?: null,
             'max_items_per_run' => max(1, (int)($_POST['max_items_per_run'] ?? 2)),
             'max_age_days' => $_POST['max_age_days'] === '' ? null : max(1, (int)$_POST['max_age_days']),
             'enabled' => isset($_POST['enabled']) ? 1 : 0,
@@ -36,13 +38,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$errors) {
             $pdo = db();
             if ($source) {
-                $stmt = $pdo->prepare('UPDATE sources SET name=:name, feed_url=:feed_url, site_url=:site_url, category=:category, language=:language, source_type=:source_type, link_selector=:link_selector, max_items_per_run=:mx, max_age_days=:max_age_days, auto_publish=:ap, enabled=:enabled WHERE id=:id');
+                $stmt = $pdo->prepare('UPDATE sources SET name=:name, feed_url=:feed_url, site_url=:site_url, category=:category, language=:language, source_type=:source_type, link_selector=:link_selector, date_selector=:date_selector, content_selector=:content_selector, max_items_per_run=:mx, max_age_days=:max_age_days, auto_publish=:ap, enabled=:enabled WHERE id=:id');
                 $data['id'] = $source['id'];
                 $data['mx'] = $data['max_items_per_run']; unset($data['max_items_per_run']);
                 $data['ap'] = $data['auto_publish']; unset($data['auto_publish']);
                 $stmt->execute($data);
             } else {
-                $stmt = $pdo->prepare('INSERT INTO sources (name, feed_url, site_url, category, language, source_type, link_selector, max_items_per_run, max_age_days, auto_publish, enabled) VALUES (:name, :feed_url, :site_url, :category, :language, :source_type, :link_selector, :mx, :max_age_days, :ap, :enabled)');
+                $stmt = $pdo->prepare('INSERT INTO sources (name, feed_url, site_url, category, language, source_type, link_selector, date_selector, content_selector, max_items_per_run, max_age_days, auto_publish, enabled) VALUES (:name, :feed_url, :site_url, :category, :language, :source_type, :link_selector, :date_selector, :content_selector, :mx, :max_age_days, :ap, :enabled)');
                 $data['mx'] = $data['max_items_per_run']; unset($data['max_items_per_run']);
                 $data['ap'] = $data['auto_publish']; unset($data['auto_publish']);
                 $stmt->execute($data);
@@ -54,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$current = $source ?: ['name'=>'', 'feed_url'=>'', 'site_url'=>'', 'category'=>'', 'language'=>'en', 'source_type'=>'rss', 'link_selector'=>'', 'max_items_per_run'=>2, 'max_age_days'=>null, 'auto_publish'=>null, 'enabled'=>1];
+$current = $source ?: ['name'=>'', 'feed_url'=>'', 'site_url'=>'', 'category'=>'', 'language'=>'en', 'source_type'=>'rss', 'link_selector'=>'', 'date_selector'=>'', 'content_selector'=>'', 'max_items_per_run'=>2, 'max_age_days'=>null, 'auto_publish'=>null, 'enabled'=>1];
 $apVal = $current['auto_publish'];
 ?>
 <div class="admin-page admin-page--editor">
@@ -84,6 +86,29 @@ $apVal = $current['auto_publish'];
                     <small class="hint">Opcjonalny. Domyślnie szuka linków w &lt;article&gt;, &lt;h1-3&gt;. CSS lub XPath.</small>
                 </label>
                 <label>Strona główna źródła (opcjonalnie)<input type="url" name="site_url" value="<?= e($current['site_url']) ?>" placeholder="https://example.com"></label>
+
+                <fieldset style="margin-top:1rem">
+                    <legend>Ręczne wskazanie daty i treści (gdy automat zawodzi)</legend>
+                    <label>Selektor daty publikacji (na stronie artykułu)
+                        <input type="text" name="date_selector" value="<?= e($current['date_selector'] ?? '') ?>" placeholder="np. time.post-date  lub  .article-meta .date">
+                        <small class="hint">Opcjonalny. Gdy ustawiony, ma najwyższy priorytet — data jest brana z tego elementu. CMS odczyta atrybut <code>datetime</code>/<code>content</code> albo tekst elementu (rozumie też polskie daty, np. „9 cze 2026").</small>
+                    </label>
+                    <label>Selektor treści artykułu (na stronie artykułu)
+                        <input type="text" name="content_selector" value="<?= e($current['content_selector'] ?? '') ?>" placeholder="np. div.post-content  lub  article .entry-body">
+                        <small class="hint">Opcjonalny. Gdy ustawiony, do streszczenia AI trafia tylko zawartość tego elementu (czystsza treść = lepsze artykuły). Gdy selektor nic nie znajdzie, działa automat.</small>
+                    </label>
+                    <details style="margin-top:.5rem">
+                        <summary style="cursor:pointer;font-weight:600">📖 Jak znaleźć selektor? (krótka instrukcja)</summary>
+                        <ol class="hint" style="margin:.5rem 0 0 1.25rem;line-height:1.6">
+                            <li>Otwórz <strong>stronę artykułu</strong> (nie listingu) w przeglądarce.</li>
+                            <li>Kliknij <strong>prawym przyciskiem</strong> na datę (lub treść) → <strong>„Zbadaj"</strong> / „Inspect".</li>
+                            <li>W DevTools zobaczysz podświetlony element, np. <code>&lt;time class="post-date"&gt;9 cze 2026&lt;/time&gt;</code>.</li>
+                            <li>Zbuduj selektor z tagu i klasy: <code>time.post-date</code>. Sama klasa też działa: <code>.post-date</code>.</li>
+                            <li>Dla treści wskaż kontener całego tekstu, np. <code>div.article-body</code>.</li>
+                        </ol>
+                        <p class="hint" style="margin:.5rem 0 0">Obsługiwane są proste selektory CSS (tag, <code>.klasa</code>, <code>#id</code>, zagnieżdżenie przez spację) oraz pełny XPath (zaczynający się od <code>/</code> lub <code>(</code>). Ustawienie zapisuje się przy źródle i działa dla wszystkich kolejnych importów.</p>
+                    </details>
+                </fieldset>
             </div>
             <aside class="editor-form__side">
                 <fieldset>

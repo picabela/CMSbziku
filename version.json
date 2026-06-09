@@ -1,5 +1,5 @@
 {
-    "version": "1.3.1",
-    "released": "2026-06-04",
-    "notes": "Google News Sitemap dziala teraz bez recznej edycji .htaccess. robots.txt wskazuje na /sitemap_news.php (Google akceptuje sitemapy pod dowolnym URL zwracajacym XML), dzieki czemu po aktualizacji z panelu mapa newsow dziala od razu — plik .htaccess jest chroniony przed nadpisaniem przez updater, wiec stara regula ladnego URL sie nie zmienia. Ladny adres /sitemap_news.xml nadal dziala na instalacjach z zaktualizowanym .htaccess."
+    "version": "1.3.2",
+    "released": "2026-06-09",
+    "notes": "Znacznie lepsze wykrywanie dat publikacji przy imporcie ze zrodel HTML: daty tekstowe w tresci strony (polskie i angielskie nazwy miesiecy, np. 9 cze 2026 lub Jun 9 2026), data w adresie URL artykulu, element time bez atrybutu datetime. Dodatkowo przy kazdym zrodle mozna recznie wskazac selektor daty oraz selektor tresci artykulu (CSS lub XPath) — ustawienie zapamietywane przy zrodle, z krotka instrukcja w formularzu. Reczny selektor ma najwyzszy priorytet, a selektor tresci daje czystszy tekst do streszczenia AI."
 }

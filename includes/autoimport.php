@@ -311,7 +311,7 @@ class AutoImporter {
             ]);
 
             $dateAttempts = [];
-            $htmlTs = $this->extractDateFromHtml($html, $dateAttempts);
+            $htmlTs = $this->extractDateFromHtml($html, $dateAttempts, $row['external_url'], $source);
             $effectiveTs = $row['published_ts'] ? (int)$row['published_ts'] : $htmlTs;
             $this->trace('3_date_extraction', [
                 'attempts' => $dateAttempts,
@@ -341,8 +341,8 @@ class AutoImporter {
                 return;
             }
 
-            $content = $this->extractMainText($html);
-            $contentSource = 'html_article';
+            $content = $this->extractMainText($html, $source);
+            $contentSource = !empty($source['content_selector']) ? 'manual_selector' : 'html_article';
             if (mb_strlen($content) < 400) {
                 $content = trim(strip_tags($row['description'] ?? ''));
                 $contentSource = 'rss_description_fallback';
@@ -476,8 +476,17 @@ class AutoImporter {
         return $items;
     }
 
-    private function extractDateFromHtml(string $html, ?array &$attempts = null): ?int {
+    private function extractDateFromHtml(string $html, ?array &$attempts = null, string $url = '', ?array $source = null): ?int {
         $attempts = $attempts ?? [];
+
+        // 0) Ręczny selektor daty zdefiniowany przy źródle — najwyższy priorytet.
+        $dateSelector = trim((string)($source['date_selector'] ?? ''));
+        if ($dateSelector !== '') {
+            $found = $this->extractDateBySelector($html, $dateSelector);
+            $attempts[] = ['signal' => 'ręczny selektor (' . $dateSelector . ')', 'value' => $found['raw'] ?? null, 'parsed' => !empty($found['ts']) ? date('c', $found['ts']) : null];
+            if (!empty($found['ts'])) return $found['ts'];
+        }
+
         // 1) <meta property="article:published_time" ...>
         if (preg_match('#<meta[^>]+property=["\']article:(?:published_time|modified_time)["\'][^>]+content=["\']([^"\']+)["\']#i', $html, $m)) {
             $t = strtotime($m[1]);
@@ -510,7 +519,175 @@ class AutoImporter {
             $attempts[] = ['signal' => 'time datetime', 'value' => $m[1], 'parsed' => $t ? date('c', $t) : null];
             if ($t) return $t;
         }
+        // 5) <time>tekst</time> — bez atrybutu datetime
+        if (preg_match('#<time[^>]*>(.*?)</time>#si', $html, $m)) {
+            $raw = trim(html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            $t = $this->parseFlexibleDate($raw);
+            $attempts[] = ['signal' => 'time (tekst)', 'value' => $raw, 'parsed' => $t ? date('c', $t) : null];
+            if ($t) return $t;
+        }
+        // 6) Data w URL artykułu: /2026/06/09/... lub /2026-06-09-...
+        if ($url !== '') {
+            $path = parse_url($url, PHP_URL_PATH) ?? '';
+            if (preg_match('#/(20\d{2})[/-](\d{1,2})(?:[/-](\d{1,2}))?#', $path, $m)) {
+                $y = (int)$m[1]; $mo = (int)$m[2]; $d = (int)($m[3] ?? 1);
+                if ($mo >= 1 && $mo <= 12 && $d >= 1 && $d <= 31) {
+                    $t = mktime(12, 0, 0, $mo, $d, $y);
+                    $attempts[] = ['signal' => 'data w URL', 'value' => $m[0], 'parsed' => date('c', $t)];
+                    return $t;
+                }
+            }
+        }
+        // 7) Data tekstowa w widocznej treści (PL: "9 cze 2026", "9 czerwca 2026"; EN: "Jun 9, 2026"; ISO; DD.MM.YYYY)
+        $t = $this->extractTextualDate($html, $raw);
+        if ($t) {
+            $attempts[] = ['signal' => 'data tekstowa w treści', 'value' => $raw, 'parsed' => date('c', $t)];
+            return $t;
+        }
+
         $attempts[] = ['signal' => '— nic nie znaleziono —'];
+        return null;
+    }
+
+    /**
+     * Pobiera datę ze wskazanego ręcznie elementu (CSS lub XPath) na stronie artykułu.
+     * Zwraca ['raw' => tekst elementu, 'ts' => timestamp|null].
+     */
+    private function extractDateBySelector(string $html, string $selector): array {
+        libxml_use_internal_errors(true);
+        $doc = new DOMDocument();
+        @$doc->loadHTML('<?xml encoding="utf-8"?>' . $html);
+        libxml_clear_errors();
+        $xpath = new DOMXPath($doc);
+        $expr = $this->isXPath($selector) ? $selector : $this->cssToXPath($selector);
+        $nodes = @$xpath->query($expr);
+        if (!$nodes || $nodes->length === 0) return ['raw' => null, 'ts' => null];
+
+        $node = $nodes->item(0);
+        // Najpierw atrybuty z maszynową datą, potem tekst elementu.
+        foreach (['datetime', 'content', 'data-date', 'title'] as $attr) {
+            if ($node instanceof DOMElement && $node->hasAttribute($attr)) {
+                $v = trim($node->getAttribute($attr));
+                $ts = $this->parseFlexibleDate($v);
+                if ($ts) return ['raw' => $v, 'ts' => $ts];
+            }
+        }
+        $text = trim(preg_replace('/\s+/u', ' ', $node->textContent));
+        return ['raw' => $text, 'ts' => $this->parseFlexibleDate($text)];
+    }
+
+    /**
+     * Zwraca wewnętrzny HTML pierwszego elementu pasującego do selektora (CSS lub XPath),
+     * lub null gdy brak dopasowania.
+     */
+    private function extractHtmlBySelector(string $html, string $selector): ?string {
+        libxml_use_internal_errors(true);
+        $doc = new DOMDocument();
+        @$doc->loadHTML('<?xml encoding="utf-8"?>' . $html);
+        libxml_clear_errors();
+        $xpath = new DOMXPath($doc);
+        $expr = $this->isXPath($selector) ? $selector : $this->cssToXPath($selector);
+        $nodes = @$xpath->query($expr);
+        if (!$nodes || $nodes->length === 0) return null;
+        $node = $nodes->item(0);
+        $inner = '';
+        foreach ($node->childNodes as $child) {
+            $inner .= $doc->saveHTML($child);
+        }
+        return $inner !== '' ? $inner : $doc->saveHTML($node);
+    }
+
+    /**
+     * Parsuje datę z tekstu w wielu formatach: ISO, angielskie i polskie nazwy
+     * miesięcy (pełne i skróty: "9 cze 2026", "9 czerwca 2026"), DD.MM.YYYY.
+     */
+    private function parseFlexibleDate(string $raw): ?int {
+        $raw = trim($raw);
+        if ($raw === '') return null;
+
+        // Polskie miesiące → angielskie (strtotime nie zna polskich).
+        static $plMonths = [
+            'stycznia' => 'January', 'styczeń' => 'January', 'styczen' => 'January', 'sty' => 'January',
+            'lutego' => 'February', 'luty' => 'February', 'lut' => 'February',
+            'marca' => 'March', 'marzec' => 'March', 'mar' => 'March',
+            'kwietnia' => 'April', 'kwiecień' => 'April', 'kwiecien' => 'April', 'kwi' => 'April',
+            'maja' => 'May', 'maj' => 'May',
+            'czerwca' => 'June', 'czerwiec' => 'June', 'cze' => 'June',
+            'lipca' => 'July', 'lipiec' => 'July', 'lip' => 'July',
+            'sierpnia' => 'August', 'sierpień' => 'August', 'sierpien' => 'August', 'sie' => 'August',
+            'września' => 'September', 'wrzesień' => 'September', 'wrzesnia' => 'September', 'wrzesien' => 'September', 'wrz' => 'September',
+            'października' => 'October', 'październik' => 'October', 'pazdziernika' => 'October', 'pazdziernik' => 'October', 'paź' => 'October', 'paz' => 'October',
+            'listopada' => 'November', 'listopad' => 'November', 'lis' => 'November',
+            'grudnia' => 'December', 'grudzień' => 'December', 'grudzien' => 'December', 'gru' => 'December',
+        ];
+        $norm = mb_strtolower($raw, 'UTF-8');
+        // Dopasuj "D <miesiąc-pl> YYYY" (skrót lub pełna nazwa).
+        if (preg_match('/(\d{1,2})\s+(\p{L}{3,})\s+(\d{4})/u', $norm, $m)) {
+            $day = (int)$m[1];
+            $monWord = $m[2];
+            if ($day >= 1 && $day <= 31) {
+                foreach ($plMonths as $pl => $en) {
+                    if ($monWord === $pl || str_starts_with($monWord, $pl)) {
+                        $t = strtotime("{$day} {$en} {$m[3]}");
+                        if ($t) return $t;
+                        break;
+                    }
+                }
+            }
+        }
+        // DD.MM.YYYY / DD-MM-YYYY (Europa).
+        if (preg_match('/\b(\d{1,2})[.\-](\d{1,2})[.\-](\d{4})\b/', $raw, $m)) {
+            $d = (int)$m[1]; $mo = (int)$m[2]; $y = (int)$m[3];
+            if ($mo >= 1 && $mo <= 12 && $d >= 1 && $d <= 31) {
+                return mktime(12, 0, 0, $mo, $d, $y);
+            }
+        }
+        // Reszta (ISO, angielskie nazwy, RFC) — strtotime sobie radzi.
+        $t = strtotime($raw);
+        if ($t !== false) {
+            $y = (int)date('Y', $t);
+            if ($y >= 2000 && $y <= (int)date('Y') + 1) return $t;
+        }
+        return null;
+    }
+
+    /**
+     * Szuka pierwszej daty tekstowej w widocznej treści strony (region nagłówka artykułu).
+     * Obsługuje formaty PL i EN. Zwraca timestamp lub null; $matchedRaw — co dopasowano.
+     */
+    private function extractTextualDate(string $html, ?string &$matchedRaw = null): ?int {
+        $matchedRaw = null;
+        // Usuń niewidoczne bloki i ogranicz się do początku dokumentu (nagłówek artykułu).
+        $clean = preg_replace('#<(script|style|noscript|svg|nav|footer)\b[^>]*>.*?</\1>#si', ' ', $html);
+        // Tagi → spacje, żeby tekst sąsiednich elementów się nie skleił ("...5</h1><div>9 cze..." ≠ "59 cze").
+        $text = html_entity_decode(preg_replace('#<[^>]+>#', ' ', $clean), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('/\s+/u', ' ', $text);
+        $text = mb_substr($text, 0, 20000);
+
+        $patterns = [
+            // 9 czerwca 2026 / 9 cze 2026
+            '/\b(\d{1,2}\s+(?:sty|lut|mar|kwi|maj|cze|lip|sie|wrz|paź|paz|lis|gru)\p{L}*\s+\d{4})\b/iu',
+            // June 9, 2026 / Jun 9 2026
+            '/\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4})\b/i',
+            // 9 June 2026
+            '/\b(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4})\b/i',
+            // 2026-06-09
+            '/\b(20\d{2}-\d{2}-\d{2})\b/',
+            // 09.06.2026
+            '/\b(\d{1,2}\.\d{1,2}\.20\d{2})\b/',
+        ];
+        foreach ($patterns as $p) {
+            if (preg_match_all($p, $text, $mm)) {
+                // Próbuj kolejnych dopasowań — pierwsze może być sklejką (np. numer + data).
+                foreach (array_slice($mm[1], 0, 5) as $candidate) {
+                    $ts = $this->parseFlexibleDate($candidate);
+                    if ($ts) {
+                        $matchedRaw = $candidate;
+                        return $ts;
+                    }
+                }
+            }
+        }
         return null;
     }
 
@@ -643,9 +820,19 @@ class AutoImporter {
         return (bool)$stmt->fetch();
     }
 
-    private function extractMainText(string $html): string {
+    private function extractMainText(string $html, ?array $source = null): string {
+        // Ręczny selektor treści zdefiniowany przy źródle — najwyższy priorytet.
+        $contentSelector = trim((string)($source['content_selector'] ?? ''));
+        $manualOk = false;
+        if ($contentSelector !== '') {
+            $manual = $this->extractHtmlBySelector($html, $contentSelector);
+            if ($manual !== null && mb_strlen(trim(strip_tags($manual))) >= 200) {
+                $html = $manual;
+                $manualOk = true;
+            }
+        }
         $html = preg_replace('#<(script|style|nav|footer|header|aside|form|noscript)\b[^>]*>.*?</\1>#si', ' ', $html);
-        if (preg_match('#<article\b[^>]*>(.*?)</article>#si', $html, $m)) {
+        if (!$manualOk && preg_match('#<article\b[^>]*>(.*?)</article>#si', $html, $m)) {
             $html = $m[1];
         }
         $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
