@@ -16,6 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $content = $_POST['content'] ?? '';
         $category = trim($_POST['category'] ?? 'Aktualności');
         $author = trim($_POST['author'] ?? 'Redakcja');
+        $authorIdRaw = trim($_POST['author_id'] ?? '');
+        $authorId = ($authorIdRaw !== '' && ctype_digit($authorIdRaw) && (int)$authorIdRaw > 0) ? (int)$authorIdRaw : null;
         $featuredAlt = trim($_POST['featured_image_alt'] ?? '');
         $metaTitle = trim($_POST['meta_title'] ?? '');
         $metaDesc = trim($_POST['meta_description'] ?? '');
@@ -64,13 +66,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $slug = uniqueSlug($slugBase, $post['id'] ?? null);
             $pdo = db();
             if ($post) {
-                $stmt = $pdo->prepare("UPDATE posts SET slug=?, title=?, subtitle=?, excerpt=?, content=?, featured_image=?, featured_image_alt=?, category=?, author=?, meta_title=?, meta_description=?, meta_keywords=?, status=?, tldr=?, show_toc=?, published_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?");
-                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt, $post['id']]);
+                $stmt = $pdo->prepare("UPDATE posts SET slug=?, title=?, subtitle=?, excerpt=?, content=?, featured_image=?, featured_image_alt=?, category=?, author=?, author_id=?, meta_title=?, meta_description=?, meta_keywords=?, status=?, tldr=?, show_toc=?, published_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?");
+                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $authorId, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt, $post['id']]);
                 attachTagsToPost((int)$post['id'], $tagNames);
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł zapisany.'];
             } else {
-                $stmt = $pdo->prepare("INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image, featured_image_alt, category, author, meta_title, meta_description, meta_keywords, status, tldr, show_toc, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt]);
+                $stmt = $pdo->prepare("INSERT INTO posts (slug, title, subtitle, excerpt, content, featured_image, featured_image_alt, category, author, author_id, meta_title, meta_description, meta_keywords, status, tldr, show_toc, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->execute([$slug, $title, $subtitle, $excerpt, $content, $featuredImage, $featuredAlt, $category, $author, $authorId, $metaTitle, $metaDesc, $metaKw, $status, ($tldr ?: null), $showToc, $publishedAt]);
                 $newId = (int)$pdo->lastInsertId();
                 attachTagsToPost($newId, $tagNames);
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł utworzony.'];
@@ -82,6 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $allCats = allCategories();
+$allAuthorsList = allAuthors();
+$currentAuthorId = $post['author_id'] ?? defaultAuthorId();
 $existingTags = $post ? getPostTags((int)$post['id']) : [];
 $existingTagsCsv = implode(', ', array_map(fn($t) => $t['name'], $existingTags));
 ?>
@@ -154,7 +158,18 @@ $existingTagsCsv = implode(', ', array_map(fn($t) => $t['name'], $existingTags))
                         </select>
                         <small class="hint"><a href="categories.php">Zarządzaj kategoriami</a></small>
                     </label>
-                    <label>Autor
+                    <label>Autor (z bazy)
+                        <select name="author_id">
+                            <option value="">— brak (użyj pola tekstowego poniżej) —</option>
+                            <?php foreach ($allAuthorsList as $a): ?>
+                                <option value="<?= (int)$a['id'] ?>" <?= (int)$currentAuthorId === (int)$a['id'] ? 'selected' : '' ?>>
+                                    <?= e($a['name']) ?><?= (int)$a['active'] !== 1 ? ' (nieaktywny)' : '' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small class="hint"><a href="authors.php">Zarządzaj autorami</a> · domyślny autor jest auto-przypisywany do nowych artykułów</small>
+                    </label>
+                    <label>Autor (tekst — fallback / legacy)
                         <input type="text" name="author" value="<?= e($post['author'] ?? 'Redakcja') ?>">
                     </label>
                     <label>Slug (URL)
