@@ -181,6 +181,22 @@ function initSchema(PDO $pdo): void {
             FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_ratings_post ON post_ratings(post_id);
+
+        CREATE TABLE IF NOT EXISTS authors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            slug TEXT UNIQUE NOT NULL,
+            bio TEXT,
+            photo TEXT,
+            email TEXT,
+            url TEXT,
+            active INTEGER DEFAULT 1,
+            sort_order INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug);
+        CREATE INDEX IF NOT EXISTS idx_authors_active ON authors(active);
     ");
 
     // Lekkie migracje dla istniejących instalacji
@@ -191,6 +207,7 @@ function initSchema(PDO $pdo): void {
     addColumnIfMissing($pdo, 'posts', 'source_attribution', "TEXT");
     addColumnIfMissing($pdo, 'posts', 'tldr', "TEXT");
     addColumnIfMissing($pdo, 'posts', 'show_toc', "INTEGER");  // NULL = global, 0/1 = override
+    addColumnIfMissing($pdo, 'posts', 'author_id', "INTEGER");  // FK -> authors.id (opcjonalne; jeśli NULL fallback do author text)
 
     // Seed domyślnych kategorii (jeśli pusto)
     if ((int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn() === 0) {
@@ -220,7 +237,7 @@ function initSchema(PDO $pdo): void {
         'auto_target_language' => 'pl',
         'auto_default_category' => 'Aktualności',
         'auto_default_author' => 'Redakcja AI',
-        'auto_prompt' => "Jesteś dziennikarzem branżowym piszącym po polsku dla minimalistycznej gazety online o SEO, GEO, reklamie cyfrowej (ADS) i AI.\n\nNa podstawie poniższego artykułu źródłowego napisz oryginalne, ciekawe streszczenie po polsku — w formie samodzielnego newsa redakcyjnego, nie kopiując zdań ze źródła. Tekst powinien:\n- mieć ok. 300–500 słów,\n- być zwięzły, informacyjny i konkretny,\n- używać prostego języka, krótkich akapitów <p>,\n- zawierać 1-2 śródtytuły <h2> oraz listę <ul> jeśli to naturalne,\n- nie zaczynać od „W artykule…\", „Według…\" — pisz wprost,\n- na końcu dodać akapit „Dlaczego to ważne\" w 2-3 zdaniach.\n\nZwróć WYŁĄCZNIE poprawny JSON o strukturze:\n{\n  \"title\": \"chwytliwy tytuł po polsku, max 80 znaków\",\n  \"subtitle\": \"krótki podtytuł po polsku, max 140 znaków\",\n  \"excerpt\": \"zajawka 1-2 zdania po polsku, max 220 znaków\",\n  \"content\": \"treść w prostym HTML (<p>, <h2>, <ul>, <li>, <strong>, <em>, <blockquote>)\",\n  \"category\": \"jedna z: SEO, GEO, ADS, AI, Aktualności\",\n  \"keywords\": \"5-7 słów kluczowych po polsku, przecinki\",\n  \"image_alt\": \"opis sugerowanego obrazu po polsku, max 120 znaków\",\n  \"tags\": [\"tablica nazw firm/marek/produktów występujących w tekście, max 3\"],\n  \"tldr\": \"2-3 zdania streszczenia (TL;DR) na sam początek — kluczowy fakt + dlaczego ważne, do 280 znaków, idealne do cytowania przez AI\"\n}",
+        'auto_prompt' => "Jesteś dziennikarzem branżowym piszącym po polsku dla minimalistycznej gazety online o SEO, GEO, reklamie cyfrowej (ADS) i AI.\n\nNa podstawie poniższego artykułu źródłowego napisz oryginalne, ciekawe streszczenie po polsku — w formie samodzielnego newsa redakcyjnego, nie kopiując zdań ze źródła. Tekst powinien:\n- mieć ok. 300–500 słów,\n- być zwięzły, informacyjny i konkretny,\n- używać prostego języka, krótkich akapitów <p>,\n- zawierać 1-2 śródtytuły <h2> oraz listę <ul> jeśli to naturalne,\n- nie zaczynać od „W artykule…”, „Według…” — pisz wprost,\n- na końcu dodać akapit „Dlaczego to ważne” w 2-3 zdaniach.\n\nZwróć WYŁĄCZNIE poprawny JSON o strukturze:\n{\n  \"title\": \"chwytliwy tytuł po polsku, max 80 znaków\",\n  \"subtitle\": \"krótki podtytuł po polsku, max 140 znaków\",\n  \"excerpt\": \"zajawka 1-2 zdania po polsku, max 220 znaków\",\n  \"content\": \"treść w prostym HTML (<p>, <h2>, <ul>, <li>, <strong>, <em>, <blockquote>)\",\n  \"category\": \"jedna z: SEO, GEO, ADS, AI, Aktualności\",\n  \"keywords\": \"5-7 słów kluczowych po polsku, przecinki\",\n  \"image_alt\": \"opis sugerowanego obrazu po polsku, max 120 znaków\",\n  \"tags\": [\"tablica nazw firm/marek/produktów występujących w tekście, max 3\"],\n  \"tldr\": \"2-3 zdania streszczenia (TL;DR) na sam początek — kluczowy fakt + dlaczego ważne, do 280 znaków, idealne do cytowania przez AI\"\n}",
         'auto_last_run' => '',
         // Tożsamość strony — edytowalne z panelu (nadpisują stałe z config.php)
         'site_name' => '',
@@ -279,6 +296,9 @@ function initSchema(PDO $pdo): void {
         // Masthead — edycja "Wydanie cyfrowe"
         'masthead_edition_enabled' => '1',
         'masthead_edition_text' => 'Wydanie cyfrowe',
+        // Autorzy
+        'authors_footer_enabled' => '1',
+        'default_author_id' => '',
         // RODO / Cookie consent
         'rodo_enabled' => '0',
         'rodo_consent_mode_v2' => '1',
@@ -375,7 +395,7 @@ function seedData(PDO $pdo): void {
             'slug' => 'google-ai-overviews-zmiany-2026',
             'title' => 'Google AI Overviews w 2026 — co się zmieniło i jak na tym zarabiać',
             'subtitle' => 'Nowe formaty odpowiedzi AI wymagają nowych strategii contentowych.',
-            'excerpt' => 'Po dwóch latach od premiery, Google AI Overviews stały się dominującym formatem w wynikach wyszukiwania na rynkach anglojęzycznych. Sprawdzamy, jak adaptować strategię contentową.',
+            'excerpt' => 'Po dwóch latach od premiery, Google AI Overviews stały się dominującym formatem w wynikach wyszukiwania na rynkach anglojezycznych. Sprawdzamy, jak adaptować strategię contentową.',
             'category' => 'SEO',
             'featured_image_alt' => 'Zrzut ekranu wyników wyszukiwania Google z odpowiedzią AI',
             'content' => "<p>Google AI Overviews to format, który <strong>zmienił zasady gry</strong> w wyszukiwarce. W 2026 roku pojawiają się one już dla ponad 60% zapytań informacyjnych.</p><h2>Jakie zmiany zaszły w 2026 roku?</h2><ol><li>AI Overviews pojawiają się także w wynikach mobilnych w pełnej formie</li><li>Cytowania źródeł są bardziej widoczne i klikalne</li><li>Wprowadzono nowy format „Follow-up questions”</li><li>Wyniki są personalizowane na podstawie historii wyszukiwań</li></ol><h2>Jak optymalizować pod AI Overviews?</h2><p>Kluczem jest tworzenie treści, które bezpośrednio odpowiadają na pytania użytkowników. Twórz krótkie, klarowne akapity, używaj list i tabel, i pamiętaj o danych strukturalnych typu <code>FAQPage</code> oraz <code>HowTo</code>.</p>",
