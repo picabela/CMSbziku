@@ -25,6 +25,7 @@ $pendingUpdate = updaterPendingVersion();
             <a href="menu.php">Menu</a>
             <a href="categories.php">Kategorie</a>
             <a href="tags.php"><?= e(tagLabel()) ?></a>
+            <a href="authors.php">Autorzy</a>
             <a href="sources.php">Źródła</a>
             <a href="queue.php">Kolejka</a>
             <a href="auto.php">Auto-import</a>

@@ -1,5 +1,5 @@
 {
-    "version": "1.3.2",
-    "released": "2026-06-09",
-    "notes": "Znacznie lepsze wykrywanie dat publikacji przy imporcie ze zrodel HTML: daty tekstowe w tresci strony (polskie i angielskie nazwy miesiecy, np. 9 cze 2026 lub Jun 9 2026), data w adresie URL artykulu, element time bez atrybutu datetime. Dodatkowo przy kazdym zrodle mozna recznie wskazac selektor daty oraz selektor tresci artykulu (CSS lub XPath) — ustawienie zapamietywane przy zrodle, z krotka instrukcja w formularzu. Reczny selektor ma najwyzszy priorytet, a selektor tresci daje czystszy tekst do streszczenia AI."
+    "version": "1.4.0",
+    "released": "2026-06-12",
+    "notes": "Nowa zakładka Autorzy w panelu admin — pełny CRUD: dodawanie, edycja, usuwanie autorów. Każdy autor ma imię, bio, opcjonalne zdjęcie (auto WebP, max 4 MB), email i URL. Toggle aktywności sterujący wyświetlaniem stopki autora pod artykułem (z bio + linkami). Globalny przełącznik stopki + opcja domyślnego autora auto-przypisywanego do nowych artykułów. Lista artykułów zyskała filtry dat (od/do oraz ostatnie X dni — domyślnie 3), licznik wszystkich opublikowanych/szkiców, hurtową akcję przypisania autora do zaznaczonych artykułów. W edycji artykułu dodano dropdown wyboru autora z bazy."
 }
