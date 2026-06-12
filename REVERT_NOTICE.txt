@@ -1,1 +1,0 @@
-Previous commit 5675174 contained a truncated placeholder for includes/functions.php. Working on full restore.
