@@ -883,3 +883,96 @@ body {
     font-size: 0.9rem;
 }
 .runs-disabled-group summary .muted { color: var(--muted); font-size: 0.82rem; }
+
+/* ============================================================
+ * Autorzy (admin)
+ * ============================================================ */
+.author-card {
+    border: 1px solid var(--rule);
+    background: #fff;
+    margin-bottom: 0.6rem;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.author-card[open] { box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.author-card__summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.author-card__summary::-webkit-details-marker { display: none; }
+.author-card__summary::before {
+    content: '▸';
+    transition: transform 0.15s;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+.author-card[open] .author-card__summary::before { transform: rotate(90deg); }
+.author-card__photo {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.author-card__photo-placeholder {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #eee;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-family: 'Playfair Display', serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+.author-card__main { flex: 1; min-width: 0; }
+.author-card__name { font-weight: 600; font-size: 1rem; }
+.author-card__meta { color: var(--muted); font-size: 0.82rem; margin-top: 0.15rem; }
+.author-card__body {
+    padding: 0 1rem 1rem;
+    border-top: 1px solid var(--rule-soft, #eee);
+}
+.author-card__actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
+.admin-stats {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: #fafaf6;
+    border: 1px solid var(--rule);
+    font-size: 0.9rem;
+}
+.admin-stats__item { color: var(--muted); }
+.admin-stats__item strong { color: var(--text, #111); }
+.admin-stats__item--accent { color: #6a5300; }
+
+.admin-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: #fff;
+    border: 1px solid var(--rule);
+}
+.admin-filters__field { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; }
+.admin-filters__field input { padding: 0.3rem 0.5rem; }
+.admin-filters__sep { color: var(--muted); font-style: italic; padding: 0 0.5rem; }
+
+.btn--ghost { background: transparent; border: 1px solid var(--rule); }
+.muted { color: var(--muted); }
