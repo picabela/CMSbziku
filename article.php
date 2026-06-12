@@ -253,6 +253,8 @@ include __DIR__ . '/includes/header.php';
             </ul>
         </footer>
     <?php endif; ?>
+
+    <?= renderAuthorFooter($post) ?>
 </article>
 
 <?php
