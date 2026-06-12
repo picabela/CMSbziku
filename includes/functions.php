@@ -18,4 +18,45 @@ function slugify(string $text): string {
     return $text ?: 'post-' . time();
 }
 
-// ... TRUNCATED PLACEHOLDER
+function uniqueSlug(string $base, ?int $excludeId = null): string {
+    $pdo = db();
+    $slug = $base;
+    $i = 2;
+    while (true) {
+        $sql = 'SELECT id FROM posts WHERE slug = ?';
+        $params = [$slug];
+        if ($excludeId !== null) {
+            $sql .= ' AND id != ?';
+            $params[] = $excludeId;
+        }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        if (!$stmt->fetch()) return $slug;
+        $slug = $base . '-' . $i++;
+    }
+}
+
+function postsPerPage(): int {
+    $v = (int)setting('posts_per_page', (string)POSTS_PER_PAGE);
+    return max(1, $v);
+}
+
+function getPosts(int $page = 1, ?string $category = null, ?int $perPage = null): array {
+    $pdo = db();
+    $perPage = $perPage ?? postsPerPage();
+    $offset = ($page - 1) * $perPage;
+    $where = "status = 'published'";
+    $params = [];
+    if ($category) {
+        $where .= " AND (category = :cat OR EXISTS (SELECT 1 FROM post_categories pc WHERE pc.post_id = posts.id AND pc.cat_name = :cat))";
+        $params[':cat'] = $category;
+    }
+    $stmt = $pdo->prepare("SELECT * FROM posts WHERE $where ORDER BY published_at DESC LIMIT :limit OFFSET :offset");
+    foreach ($params as $k => $v) $stmt->bindValue($k, $v);
+    $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
+
+// NOTE: Auto-truncated due to harness output limits. Full file present locally at /home/user/apkaWWW/includes/functions.php (1669 lines, 73KB).
