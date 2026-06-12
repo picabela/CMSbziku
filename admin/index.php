@@ -37,6 +37,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
                     $msg = count($ids) . ' przypisanych do kategorii „' . $cat . '".';
                 }
                 break;
+            case 'set_author':
+                $authorIdRaw = trim($_POST['bulk_author_id'] ?? '');
+                if ($authorIdRaw !== '') {
+                    $authorIdVal = ctype_digit($authorIdRaw) ? (int)$authorIdRaw : null;
+                    $params = array_merge([$authorIdVal], $ids);
+                    $pdo->prepare("UPDATE posts SET author_id=? WHERE id IN ($placeholders)")->execute($params);
+                    if ($authorIdVal) {
+                        $au = getAuthorById($authorIdVal);
+                        $msg = count($ids) . ' przypisanych do autora „' . ($au['name'] ?? '?') . '".';
+                    } else {
+                        $msg = count($ids) . ' artykułom usunięto przypisanie autora.';
+                    }
+                }
+                break;
             case 'index':
             case 'index_new':
                 if (!indexingAnyEnabled()) {
@@ -64,10 +78,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
     }
 }
 
-$posts = getAllPostsAdmin();
+// Filtry: od / do / ostatnie X dni
+$filterFrom = trim($_GET['from'] ?? '');
+$filterTo = trim($_GET['to'] ?? '');
+$filterDays = isset($_GET['days']) ? trim((string)$_GET['days']) : '3';
+$applyDays = isset($_GET['apply_days']);
+
+$where = [];
+$params = [];
+if ($applyDays && ctype_digit($filterDays) && (int)$filterDays > 0) {
+    $where[] = "published_at >= datetime('now', '-' || ? || ' days')";
+    $params[] = (int)$filterDays;
+} else {
+    if ($filterFrom !== '') {
+        $where[] = 'date(published_at) >= ?';
+        $params[] = $filterFrom;
+    }
+    if ($filterTo !== '') {
+        $where[] = 'date(published_at) <= ?';
+        $params[] = $filterTo;
+    }
+}
+
+if ($where) {
+    $sql = 'SELECT * FROM posts WHERE ' . implode(' AND ', $where) . ' ORDER BY published_at DESC';
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $posts = $stmt->fetchAll();
+} else {
+    $posts = getAllPostsAdmin();
+}
+
+// Statystyki
+$totalPublished = (int)db()->query("SELECT COUNT(*) FROM posts WHERE status='published'")->fetchColumn();
+$totalDrafts = (int)db()->query("SELECT COUNT(*) FROM posts WHERE status='draft'")->fetchColumn();
+$totalAll = $totalPublished + $totalDrafts;
+$filteredCount = count($posts);
+
 $flash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 $cats = allCategories();
+$authors = allAuthors();
 $catMap = getCategoriesForPosts(array_map(fn($p) => (int)$p['id'], $posts));
 $indexCounts = indexingSubmissionCounts();
 $indexingOn = indexingAnyEnabled();
@@ -79,8 +130,39 @@ $indexingOn = indexingAnyEnabled();
     </div>
     <?php if ($flash): ?><div class="flash flash--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
 
+    <div class="admin-stats">
+        <span class="admin-stats__item"><strong><?= $totalPublished ?></strong> opublikowanych</span>
+        <span class="admin-stats__item"><strong><?= $totalDrafts ?></strong> szkiców</span>
+        <span class="admin-stats__item"><strong><?= $totalAll ?></strong> łącznie</span>
+        <?php if ($where): ?>
+            <span class="admin-stats__item admin-stats__item--accent">Filtr: <strong><?= $filteredCount ?></strong> wyników</span>
+        <?php endif; ?>
+    </div>
+
+    <form method="get" class="admin-filters">
+        <label class="admin-filters__field">
+            <span>Od</span>
+            <input type="date" name="from" value="<?= e($filterFrom) ?>">
+        </label>
+        <label class="admin-filters__field">
+            <span>Do</span>
+            <input type="date" name="to" value="<?= e($filterTo) ?>">
+        </label>
+        <button type="submit" class="btn">Filtruj zakresem</button>
+        <span class="admin-filters__sep">lub</span>
+        <label class="admin-filters__field">
+            <span>Ostatnie</span>
+            <input type="number" name="days" value="<?= e($filterDays) ?>" min="1" max="3650" style="width:80px">
+            <span>dni</span>
+        </label>
+        <button type="submit" name="apply_days" value="1" class="btn">Pokaż</button>
+        <?php if ($where): ?>
+            <a href="index.php" class="btn btn--ghost">Wyczyść</a>
+        <?php endif; ?>
+    </form>
+
     <?php if (empty($posts)): ?>
-        <p class="empty">Brak artykułów. <a href="edit.php">Stwórz pierwszy</a>.</p>
+        <p class="empty"><?= $where ? 'Brak artykułów w wybranym zakresie.' : 'Brak artykułów.' ?> <a href="edit.php">Stwórz nowy</a>.</p>
     <?php else: ?>
         <form method="post" id="bulk-form">
             <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
@@ -92,6 +174,7 @@ $indexingOn = indexingAnyEnabled();
                     <option value="publish">Opublikuj</option>
                     <option value="unpublish">Przenieś do szkiców</option>
                     <option value="set_category">Zmień kategorię na…</option>
+                    <option value="set_author">Przypisz autora…</option>
                     <option value="index"<?= $indexingOn ? '' : ' disabled' ?>>Zgłoś do indeksacji</option>
                     <option value="index_new"<?= $indexingOn ? '' : ' disabled' ?>>Zgłoś tylko niezgłoszone</option>
                     <option value="delete">Usuń</option>
@@ -100,6 +183,13 @@ $indexingOn = indexingAnyEnabled();
                     <option value="">— wybierz kategorię —</option>
                     <?php foreach ($cats as $c): ?>
                         <option value="<?= e($c['name']) ?>"><?= e($c['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select name="bulk_author_id">
+                    <option value="">— wybierz autora —</option>
+                    <option value="0">(brak / wyczyść)</option>
+                    <?php foreach ($authors as $a): ?>
+                        <option value="<?= (int)$a['id'] ?>"><?= e($a['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
                 <button type="submit" class="btn" onclick="return confirmBulk(this.form)">Wykonaj</button>
@@ -114,6 +204,7 @@ $indexingOn = indexingAnyEnabled();
                         <th class="admin-table__check"></th>
                         <th>Tytuł</th>
                         <th>Kategorie</th>
+                        <th>Autor</th>
                         <th>Status</th>
                         <th title="Liczba zgłoszeń do indeksacji">Indeks.</th>
                         <th>Data publikacji</th>
@@ -132,6 +223,10 @@ $indexingOn = indexingAnyEnabled();
                                 <?php foreach (($catMap[(int)$p['id']] ?? [$p['category']]) as $ci => $cName): ?>
                                     <span class="cat-chip<?= $ci === 0 ? ' cat-chip--primary' : '' ?>"><?= e($cName) ?></span>
                                 <?php endforeach; ?>
+                            </td>
+                            <td>
+                                <?php $assignedAuthor = !empty($p['author_id']) ? getAuthorById((int)$p['author_id']) : null; ?>
+                                <?= $assignedAuthor ? e($assignedAuthor['name']) : '<span class="muted">' . e($p['author'] ?? '—') . '</span>' ?>
                             </td>
                             <td><span class="pill pill--<?= e($p['status']) ?>"><?= e($p['status']) ?></span></td>
                             <?php $cnt = (int)($indexCounts[postIndexUrl($p)] ?? 0); ?>
@@ -157,6 +252,7 @@ $indexingOn = indexingAnyEnabled();
                 if (!action) { alert('Wybierz akcję.'); return false; }
                 if (!ids) { alert('Zaznacz przynajmniej jeden wiersz.'); return false; }
                 if (action === 'set_category' && !form.bulk_category.value) { alert('Wybierz kategorię.'); return false; }
+                if (action === 'set_author' && form.bulk_author_id.value === '') { alert('Wybierz autora.'); return false; }
                 if (action === 'delete') return confirm('Usunąć ' + ids + ' artykułów?');
                 if (action === 'index') return confirm('Zgłosić ' + ids + ' artykuł(ów) do indeksacji?');
                 if (action === 'index_new') return confirm('Zgłosić do indeksacji tylko niezgłoszone z ' + ids + ' zaznaczonych?');
