@@ -214,6 +214,26 @@ function initSchema(PDO $pdo): void {
     addColumnIfMissing($pdo, 'posts', 'show_toc', "INTEGER");  // NULL = global, 0/1 = override
     addColumnIfMissing($pdo, 'posts', 'nofollow_links', "INTEGER DEFAULT 0");  // 1 = wszystkie linki wych. w artykule nofollow
     addColumnIfMissing($pdo, 'posts', 'faq_json', "TEXT");  // JSON [{q,a}] — sekcja FAQ + FAQPage schema
+    addColumnIfMissing($pdo, 'posts', 'author_id', "INTEGER");  // FK -> authors.id (NULL = fallback do author text)
+
+    // Autorzy — niezależna tabela z bio + zdjęciem (opcjonalna stopka pod artykułem)
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS authors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            slug TEXT UNIQUE NOT NULL,
+            bio TEXT,
+            photo TEXT,
+            email TEXT,
+            url TEXT,
+            active INTEGER DEFAULT 1,
+            sort_order INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_authors_slug ON authors(slug);
+        CREATE INDEX IF NOT EXISTS idx_authors_active ON authors(active);
+    ");
 
     // Seed domyślnych kategorii (jeśli pusto)
     if ((int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn() === 0) {
@@ -274,6 +294,9 @@ function initSchema(PDO $pdo): void {
         // Tagi
         'auto_max_tags' => '3',
         'tag_label' => 'Tagi',
+        // Autorzy
+        'authors_footer_enabled' => '1',
+        'default_author_id' => '',
         // Stopka źródła (szablon — zmiany dotyczą tylko nowych publikacji)
         'source_attribution_template' => 'Opracowanie redakcji na podstawie źródła: {url} ({source}).',
         // Data publikacji jak w oryginale
