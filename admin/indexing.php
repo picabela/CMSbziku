@@ -136,6 +136,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
         setSetting('gsc_recheck_hours', (string)max(1, (int)($_POST['gsc_recheck_hours'] ?? 12)));
         setSetting('gsc_batch_per_run', (string)max(1, (int)($_POST['gsc_batch_per_run'] ?? 20)));
         setSetting('gsc_daily_quota', (string)max(1, (int)($_POST['gsc_daily_quota'] ?? 1800)));
+        // Pętla naprawcza
+        setSetting('gsc_resubmit_enabled', isset($_POST['gsc_resubmit_enabled']) ? '1' : '0');
+        setSetting('gsc_resubmit_after_hours', (string)max(0, (int)($_POST['gsc_resubmit_after_hours'] ?? 24)));
+        setSetting('gsc_resubmit_interval_hours', (string)max(1, (int)($_POST['gsc_resubmit_interval_hours'] ?? 48)));
+        setSetting('gsc_resubmit_max', (string)max(1, (int)($_POST['gsc_resubmit_max'] ?? 2)));
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Ustawienia monitoringu zapisane.'];
         header('Location: indexing.php?tab=monitor#monitor'); exit;
     }
@@ -163,8 +168,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
                 $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Nie wykonano: ' . ($mon['reason'] ?? '—')];
             } else {
                 $_SESSION['flash'] = ['type' => 'success',
-                    'msg' => "Sprawdzono {$mon['checked_count']} URL(i). PASS: " . ($mon['pass'] ?? 0) . ', błędy: ' . ($mon['errors'] ?? 0) . '. Zużyto puli: ' . ($mon['quota_used'] ?? '?') . '/' . ($mon['quota_limit'] ?? '?') . '.'];
+                    'msg' => "Sprawdzono {$mon['checked_count']} URL(i). PASS: " . ($mon['pass'] ?? 0) . ', błędy: ' . ($mon['errors'] ?? 0)
+                        . '. Ponowiono push: ' . ($mon['resubmitted'] ?? 0)
+                        . '. Zużyto puli: ' . ($mon['quota_used'] ?? '?') . '/' . ($mon['quota_limit'] ?? '?') . '.'];
             }
+        }
+        header('Location: indexing.php?tab=monitor#monitor'); exit;
+    }
+
+    /* --- Ręcznie ponów push dla niezaindeksowanych URL-i (pętla naprawcza on-demand) --- */
+    if ($action === 'gsc_resubmit_now') {
+        $r = gscResubmitDue(true, 100, true); // force + ignore throttle: ponów wszystkie niezaindeksowane teraz
+        if (empty($r['ran'])) {
+            $reason = $r['reason'] ?? '—';
+            $msg = $reason === 'no_channel'
+                ? 'Żaden kanał URL-owy (Google/IndexNow) nie jest włączony — nie ma czym ponowić pushu.'
+                : 'Nie wykonano: ' . $reason;
+            $_SESSION['flash'] = ['type' => 'error', 'msg' => $msg];
+        } elseif (($r['resubmitted'] ?? 0) === 0) {
+            $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Brak niezaindeksowanych URL-i do ponowienia — wszystko PASS. 🎉'];
+        } else {
+            $_SESSION['flash'] = ['type' => $r['errors'] ? 'error' : 'success',
+                'msg' => 'Ponowiono push dla ' . $r['resubmitted'] . ' URL(i). Sukces: ' . ($r['ok'] ?? 0) . ', błędy: ' . ($r['errors'] ?? 0) . '.'];
+        }
+        header('Location: indexing.php?tab=monitor#monitor'); exit;
+    }
+
+    /* --- Ponów push pojedynczego URL (pętla naprawcza per-wiersz) --- */
+    if ($action === 'gsc_resubmit_one') {
+        $u = trim($_POST['url'] ?? '');
+        if ($u === '') {
+            $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Brak URL.'];
+        } elseif (!indexingAnyEnabled()) {
+            $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Żaden kanał URL-owy (Google/IndexNow) nie jest włączony.'];
+        } else {
+            $res = indexStatusResubmit($u);
+            $ok = $err = 0;
+            foreach ($res as $r) { !empty($r['ok']) ? $ok++ : $err++; }
+            $_SESSION['flash'] = ['type' => $err ? 'error' : 'success',
+                'msg' => 'Ponowiono push URL. Sukces: ' . $ok . ', błędy: ' . $err . '.'];
         }
         header('Location: indexing.php?tab=monitor#monitor'); exit;
     }
@@ -486,6 +528,7 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
                 <li>Konto serwisowe musi być dodane jako <strong>właściciel</strong> property w Search Console (to samo co przy Google API).</li>
                 <li>Logika: pierwszy check dopiero po opóźnieniu (domyślnie 2h), ponawianie co kilka godzin, URL-e oznaczone <strong>PASS</strong> nie są już sprawdzane (oszczędność puli).</li>
                 <li>Odczytujemy: <code>verdict</code> (PASS = w indeksie), <code>coverageState</code>, <code>lastCrawlTime</code>, oraz robots/indexing/pageFetch do diagnozy.</li>
+                <li><strong>Pętla naprawcza:</strong> jeśli URL po progu czasu (domyślnie 24&nbsp;h) wciąż nie jest zaindeksowany, CMS sam ponawia push przez Google/IndexNow — do limitu prób (domyślnie 2). Możesz też ponowić ręcznie przyciskiem „Zgłoś niezaindeksowane teraz".</li>
             </ul>
         </details>
 
@@ -558,12 +601,38 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
                 </label>
             </div>
 
+            <fieldset class="radio-group" style="margin-top:1rem">
+                <legend>Pętla naprawcza (auto-ponawianie pushu)</legend>
+                <label class="checkbox">
+                    <input type="checkbox" name="gsc_resubmit_enabled" value="1" <?= gscResubmitEnabled() ? 'checked' : '' ?>>
+                    Automatycznie ponawiaj push dla URL-i, które po czasie wciąż nie są zaindeksowane
+                </label>
+                <p class="hint" style="margin:.3rem 0 .6rem 1.6rem">Gdy URL po progu czasu wciąż nie ma <strong>PASS</strong>, CMS ponownie zgłasza go przez włączone kanały URL-owe (Google&nbsp;Indexing&nbsp;API i/lub IndexNow). WebSub pinguje feed, więc nie jest używany do ponawiania pojedynczego starego URL. Działa przy cronie obok tury sprawdzania.</p>
+                <div style="display:flex;gap:1rem;flex-wrap:wrap">
+                    <label style="flex:1;min-width:160px">Pierwsze ponowienie po (godz.)
+                        <input type="number" name="gsc_resubmit_after_hours" value="<?= e(setting('gsc_resubmit_after_hours','24')) ?>" min="0">
+                    </label>
+                    <label style="flex:1;min-width:160px">Odstęp kolejnych (godz.)
+                        <input type="number" name="gsc_resubmit_interval_hours" value="<?= e(setting('gsc_resubmit_interval_hours','48')) ?>" min="1">
+                    </label>
+                    <label style="flex:1;min-width:160px">Maks. ponowień na URL
+                        <input type="number" name="gsc_resubmit_max" value="<?= e(setting('gsc_resubmit_max','2')) ?>" min="1">
+                    </label>
+                </div>
+                <p class="hint" style="margin:.4rem 0 0 0">Domyślnie: 1. ponowienie po 24&nbsp;h, 2. po 72&nbsp;h (24&nbsp;+&nbsp;48), potem już tylko monitoring — bez spamowania.</p>
+            </fieldset>
+
             <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.5rem">
                 <button type="submit" class="btn btn--primary">Zapisz</button>
                 <?php if ($googleKeyData): ?>
                     <button type="submit" form="form-gsc-test" class="btn">Testuj połączenie</button>
                     <button type="submit" form="form-gsc-check" class="btn" <?= $gscReady ? '' : 'disabled' ?>>↻ Sprawdź teraz (tura)</button>
                 <?php endif; ?>
+                <button type="submit" form="form-gsc-resubmit" class="btn"
+                    onclick="return confirm('Ponowić push (Google/IndexNow) dla wszystkich aktualnie niezaindeksowanych URL-i? Pomija progi czasu i limit prób.')"
+                    <?= indexingAnyEnabled() ? '' : 'disabled title="Włącz Google API lub IndexNow"' ?>>
+                    ⤴ Zgłoś niezaindeksowane teraz
+                </button>
                 <span class="hint" style="margin:0">Pula dziś: <strong><?= gscQuotaUsed() ?></strong>/<?= gscQuotaLimit() ?></span>
             </div>
         </form>
@@ -572,6 +641,9 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
         </form>
         <form id="form-gsc-check" method="post" style="display:none">
             <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>"><input type="hidden" name="action" value="gsc_check_now">
+        </form>
+        <form id="form-gsc-resubmit" method="post" style="display:none">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>"><input type="hidden" name="action" value="gsc_resubmit_now">
         </form>
 
         <!-- Tabela stanu -->
@@ -588,56 +660,74 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
         <?php if (!$monRows): ?>
             <p class="hint">Brak danych. Monitorowane URL-e pojawią się po publikacji (gdy monitoring włączony) lub po pierwszej turze sprawdzania.</p>
         <?php else: ?>
-        <div style="overflow-x:auto">
-            <table style="width:100%;border-collapse:collapse;font-size:.82rem">
-                <thead>
-                    <tr style="background:#f3f4f6;text-align:left">
-                        <th style="padding:.5rem .75rem">Artykuł / URL</th>
-                        <th style="padding:.5rem .75rem;white-space:nowrap">Verdict</th>
-                        <th style="padding:.5rem .75rem">Stan pokrycia</th>
-                        <th style="padding:.5rem .75rem;white-space:nowrap">Ostatni crawl</th>
-                        <th style="padding:.5rem .75rem;white-space:nowrap">Time-to-index</th>
-                        <th style="padding:.5rem .75rem;white-space:nowrap">Checki</th>
-                        <th style="padding:.5rem .75rem"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($monRows as $r):
-                    $v = $r['verdict'] ?? '';
-                    [$vColor, $vLabel] = $v === 'PASS' ? ['#16a34a', '✓ PASS']
-                        : (($v === 'FAIL' || $v === 'PARTIAL') ? ['#dc2626', '✗ ' . $v]
-                        : ['#9ca3af', $r['last_checked_at'] ? ($v ?: 'NEUTRAL') : 'nie sprawdzono']);
-                    $tti = (!empty($r['published_at']) && !empty($r['indexed_at']))
-                        ? _fmtTti((int)round((strtotime($r['indexed_at']) - strtotime($r['published_at'])) / 60)) : '—';
-                ?>
-                    <tr style="border-top:1px solid #e5e7eb">
-                        <td style="padding:.4rem .75rem;max-width:320px">
-                            <?php if (!empty($r['post_title'])): ?>
-                                <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px"><?= e($r['post_title']) ?></div>
-                            <?php endif; ?>
-                            <a href="<?= e($r['url']) ?>" target="_blank" rel="noopener" style="color:#2540b8;word-break:break-all;font-size:.76rem"><?= e($r['url']) ?></a>
-                            <?php if (!empty($r['last_error'])): ?><div style="color:#dc2626;font-size:.72rem"><?= e(mb_substr($r['last_error'],0,120)) ?></div><?php endif; ?>
-                        </td>
-                        <td style="padding:.4rem .75rem;white-space:nowrap;font-weight:600;color:<?= $vColor ?>"><?= e($vLabel) ?></td>
-                        <td style="padding:.4rem .75rem;color:#374151;max-width:200px"><?= e($r['coverage_state'] ?? '—') ?></td>
-                        <td style="padding:.4rem .75rem;white-space:nowrap;color:#6b7280"><?= e($r['last_crawl_time'] ? substr($r['last_crawl_time'],0,10) : '—') ?></td>
-                        <td style="padding:.4rem .75rem;white-space:nowrap"><?= e($tti) ?></td>
-                        <td style="padding:.4rem .75rem;text-align:center;color:#6b7280"><?= (int)$r['checks_count'] ?></td>
-                        <td style="padding:.4rem .5rem">
-                            <?php if ($gscReady): ?>
-                            <form method="post" style="display:inline">
-                                <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
-                                <input type="hidden" name="action" value="gsc_check_one">
-                                <input type="hidden" name="url" value="<?= e($r['url']) ?>">
-                                <button type="submit" class="btn" style="padding:.2rem .5rem;font-size:.75rem" title="Sprawdź teraz">↻</button>
-                            </form>
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
+        <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:.82rem">
+            <colgroup>
+                <col style="width:36%">
+                <col style="width:9%">
+                <col style="width:19%">
+                <col style="width:9%">
+                <col style="width:9%">
+                <col style="width:9%">
+                <col style="width:9%">
+            </colgroup>
+            <thead>
+                <tr style="background:#f3f4f6;text-align:left">
+                    <th style="padding:.5rem .6rem">Artykuł / URL</th>
+                    <th style="padding:.5rem .4rem">Verdict</th>
+                    <th style="padding:.5rem .4rem">Stan pokrycia</th>
+                    <th style="padding:.5rem .4rem">Crawl</th>
+                    <th style="padding:.5rem .4rem">Time-to-index</th>
+                    <th style="padding:.5rem .4rem;text-align:center" title="Liczba sprawdzeń · liczba ponowień pushu">Checki · ↻</th>
+                    <th style="padding:.5rem .4rem;text-align:center">Akcje</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($monRows as $r):
+                $v = $r['verdict'] ?? '';
+                [$vColor, $vLabel] = $v === 'PASS' ? ['#16a34a', '✓ PASS']
+                    : (($v === 'FAIL' || $v === 'PARTIAL') ? ['#dc2626', '✗ ' . $v]
+                    : ['#9ca3af', $r['last_checked_at'] ? ($v ?: 'NEUTRAL') : 'nie sprawdz.']);
+                $tti = (!empty($r['published_at']) && !empty($r['indexed_at']))
+                    ? _fmtTti((int)round((strtotime($r['indexed_at']) - strtotime($r['published_at'])) / 60)) : '—';
+                $resubN = (int)($r['resubmit_count'] ?? 0);
+            ?>
+                <tr style="border-top:1px solid #e5e7eb">
+                    <td style="padding:.4rem .6rem;overflow:hidden">
+                        <?php if (!empty($r['post_title'])): ?>
+                            <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= e($r['post_title']) ?></div>
+                        <?php endif; ?>
+                        <a href="<?= e($r['url']) ?>" target="_blank" rel="noopener" style="color:#2540b8;word-break:break-all;font-size:.74rem;line-height:1.3"><?= e($r['url']) ?></a>
+                        <?php if (!empty($r['last_error'])): ?><div style="color:#dc2626;font-size:.72rem;word-break:break-word"><?= e(mb_substr($r['last_error'],0,120)) ?></div><?php endif; ?>
+                    </td>
+                    <td style="padding:.4rem .4rem;font-weight:600;color:<?= $vColor ?>;word-break:break-word"><?= e($vLabel) ?></td>
+                    <td style="padding:.4rem .4rem;color:#374151;word-break:break-word"><?= e($r['coverage_state'] ?? '—') ?></td>
+                    <td style="padding:.4rem .4rem;color:#6b7280;word-break:break-all"><?= e($r['last_crawl_time'] ? substr($r['last_crawl_time'],0,10) : '—') ?></td>
+                    <td style="padding:.4rem .4rem;word-break:break-word"><?= e($tti) ?></td>
+                    <td style="padding:.4rem .4rem;text-align:center;color:#6b7280" title="<?= (int)$r['checks_count'] ?> sprawdzeń, <?= $resubN ?> ponowień pushu">
+                        <?= (int)$r['checks_count'] ?><?php if ($resubN > 0): ?> · <span style="color:#d97706">↻<?= $resubN ?></span><?php endif; ?>
+                    </td>
+                    <td style="padding:.4rem .3rem;text-align:center">
+                        <?php if ($gscReady): ?>
+                        <form method="post" style="display:inline">
+                            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+                            <input type="hidden" name="action" value="gsc_check_one">
+                            <input type="hidden" name="url" value="<?= e($r['url']) ?>">
+                            <button type="submit" class="btn" style="padding:.2rem .45rem;font-size:.75rem" title="Sprawdź indeksację teraz">↻</button>
+                        </form>
+                        <?php endif; ?>
+                        <?php if ($v !== 'PASS' && indexingAnyEnabled()): ?>
+                        <form method="post" style="display:inline">
+                            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+                            <input type="hidden" name="action" value="gsc_resubmit_one">
+                            <input type="hidden" name="url" value="<?= e($r['url']) ?>">
+                            <button type="submit" class="btn" style="padding:.2rem .45rem;font-size:.75rem" title="Ponów push (Google/IndexNow)">⤴</button>
+                        </form>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
         <?php endif; ?>
     </section>
 
