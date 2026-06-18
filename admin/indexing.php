@@ -1,7 +1,7 @@
 <?php
 $adminTitle = 'Szybkie indeksowanie';
 require __DIR__ . '/_layout.php';
-require __DIR__ . '/../includes/indexing.php';
+require_once __DIR__ . '/../includes/indexing.php';
 
 $flash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
@@ -107,6 +107,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf($_POST['csrf'] ?? null))
         header('Location: indexing.php#google'); exit;
     }
 
+    /* --- Zapisz ustawienia WebSub (HUB) --- */
+    if ($action === 'save_websub') {
+        setSetting('websub_enabled', isset($_POST['websub_enabled']) ? '1' : '0');
+        $hub = trim($_POST['websub_hub_url'] ?? '');
+        setSetting('websub_hub_url', $hub !== '' ? $hub : 'https://pubsubhubbub.appspot.com/');
+        setSetting('websub_feed_url', trim($_POST['websub_feed_url'] ?? ''));
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Ustawienia WebSub zapisane.'];
+        header('Location: indexing.php?tab=websub#websub'); exit;
+    }
+
+    /* --- Ręczny ping huba --- */
+    if ($action === 'websub_ping') {
+        $r = websubPublish();
+        _indexingLog($r['feed'] ?? websubFeedUrl(), 'WebSub', $r['ok'], $r['msg']);
+        $_SESSION['flash'] = ['type' => $r['ok'] ? 'success' : 'error',
+            'msg' => ($r['ok'] ? '✓ Hub powiadomiony. ' : '✗ Ping huba nieudany. ') . $r['msg']];
+        header('Location: indexing.php?tab=websub#websub'); exit;
+    }
+
+    /* --- Zapisz ustawienia monitoringu (GSC URL Inspection) --- */
+    if ($action === 'save_gsc') {
+        setSetting('gsc_inspection_enabled', isset($_POST['gsc_enabled']) ? '1' : '0');
+        setSetting('gsc_monitor_auto', isset($_POST['gsc_monitor_auto']) ? '1' : '0');
+        setSetting('gsc_site_url', trim($_POST['gsc_site_url'] ?? ''));
+        setSetting('gsc_check_interval_minutes', (string)max(5, (int)($_POST['gsc_check_interval_minutes'] ?? 180)));
+        setSetting('gsc_first_check_delay_min', (string)max(0, (int)($_POST['gsc_first_check_delay_min'] ?? 120)));
+        setSetting('gsc_recheck_hours', (string)max(1, (int)($_POST['gsc_recheck_hours'] ?? 12)));
+        setSetting('gsc_batch_per_run', (string)max(1, (int)($_POST['gsc_batch_per_run'] ?? 20)));
+        setSetting('gsc_daily_quota', (string)max(1, (int)($_POST['gsc_daily_quota'] ?? 1800)));
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Ustawienia monitoringu zapisane.'];
+        header('Location: indexing.php?tab=monitor#monitor'); exit;
+    }
+
+    /* --- Test połączenia z GSC (inspekcja URL bazowego) --- */
+    if ($action === 'gsc_test') {
+        if (gscSiteUrl() === '') {
+            $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Najpierw podaj property (siteUrl) i zapisz.'];
+        } else {
+            $res = gscInspectUrl(siteBaseUrl() . '/');
+            $_SESSION['flash'] = !empty($res['ok'])
+                ? ['type' => 'success', 'msg' => '✓ Połączenie OK. Strona główna: verdict=' . ($res['verdict'] ?? '—') . ', ' . ($res['coverage_state'] ?? '—')]
+                : ['type' => 'error', 'msg' => '✗ ' . ($res['error'] ?? 'Błąd nieznany')];
+        }
+        header('Location: indexing.php?tab=monitor#monitor'); exit;
+    }
+
+    /* --- Uruchom turę monitoringu teraz --- */
+    if ($action === 'gsc_check_now') {
+        if (!gscInspectionEnabled() || gscSiteUrl() === '') {
+            $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Włącz monitoring i podaj property przed sprawdzaniem.'];
+        } else {
+            $mon = gscScheduledMonitor(true);
+            if (empty($mon['checked'])) {
+                $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Nie wykonano: ' . ($mon['reason'] ?? '—')];
+            } else {
+                $_SESSION['flash'] = ['type' => 'success',
+                    'msg' => "Sprawdzono {$mon['checked_count']} URL(i). PASS: " . ($mon['pass'] ?? 0) . ', błędy: ' . ($mon['errors'] ?? 0) . '. Zużyto puli: ' . ($mon['quota_used'] ?? '?') . '/' . ($mon['quota_limit'] ?? '?') . '.'];
+            }
+        }
+        header('Location: indexing.php?tab=monitor#monitor'); exit;
+    }
+
+    /* --- Sprawdź pojedynczy URL teraz --- */
+    if ($action === 'gsc_check_one') {
+        $u = trim($_POST['url'] ?? '');
+        if ($u === '' || gscSiteUrl() === '') {
+            $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Brak URL lub property.'];
+        } else {
+            $res = indexStatusCheckUrl($u);
+            $_SESSION['flash'] = !empty($res['ok'])
+                ? ['type' => 'success', 'msg' => 'verdict=' . ($res['verdict'] ?? '—') . ' · ' . ($res['coverage_state'] ?? '—')]
+                : ['type' => 'error', 'msg' => '✗ ' . ($res['error'] ?? 'Błąd')];
+        }
+        header('Location: indexing.php?tab=monitor#monitor'); exit;
+    }
+
+    /* --- Wyczyść monitoring --- */
+    if ($action === 'clear_monitor') {
+        indexStatusClear();
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Dane monitoringu wyczyszczone.'];
+        header('Location: indexing.php?tab=monitor#monitor'); exit;
+    }
+
     /* --- Zgłoś ponownie wszystkie nieudane --- */
     if ($action === 'resubmit_failed') {
         if (!indexingAnyEnabled()) {
@@ -162,6 +245,8 @@ $googleKeyData   = indexingGoogleKeyData();
 $indexNowKey     = indexingIndexNowKey();
 $log             = indexingGetLog(150);
 $failedUrls      = indexingFailedUrls();
+$monSummary      = indexStatusSummary();
+$monRows         = indexStatusList(300);
 $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
 ?>
 
@@ -177,8 +262,10 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
     <nav class="tabs" style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:1.5rem">
         <?php foreach ([
             'console'  => 'Konsola',
+            'websub'   => 'WebSub (HUB)',
             'google'   => 'Google API',
             'indexnow' => 'IndexNow',
+            'monitor'  => 'Monitoring (' . (int)$monSummary['pass'] . '/' . (int)$monSummary['total'] . ')',
             'general'  => 'Automatyzacja',
             'history'  => 'Historia (' . count($log) . ')' . (count($failedUrls) ? ' ⚠' : ''),
         ] as $t => $label): ?>
@@ -189,6 +276,10 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
                     <span style="font-size:.65rem;vertical-align:middle;margin-left:3px"><?= $googleKeyData ? '✅' : '⚠️' ?></span>
                 <?php elseif ($t === 'indexnow'): ?>
                     <span style="font-size:.65rem;vertical-align:middle;margin-left:3px"><?= $indexNowKey ? '✅' : '⚠️' ?></span>
+                <?php elseif ($t === 'websub'): ?>
+                    <span style="font-size:.65rem;vertical-align:middle;margin-left:3px"><?= websubEnabled() ? '✅' : '' ?></span>
+                <?php elseif ($t === 'monitor'): ?>
+                    <span style="font-size:.65rem;vertical-align:middle;margin-left:3px"><?= gscInspectionEnabled() ? '✅' : '' ?></span>
                 <?php endif; ?>
             </a>
         <?php endforeach; ?>
@@ -214,6 +305,57 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
                     <?php if (indexingIndexNowEnabled()): ?><span style="color:#16a34a;margin-left:.5rem">✓ IndexNow</span><?php else: ?><span style="color:#9ca3af;margin-left:.5rem">✗ IndexNow</span><?php endif; ?>
                 </span>
             </div>
+        </form>
+    </section>
+
+    <?php /* ========== WEBSUB (HUB) ========== */ elseif ($tab === 'websub'): ?>
+    <section class="settings-card" id="websub">
+        <h2 style="margin-top:0">WebSub / PubSubHubbub — push przez HUB</h2>
+
+        <details style="margin-bottom:1.5rem;background:#f8f9ff;border:1px solid #dde3ff;border-radius:6px;padding:.8rem 1rem">
+            <summary style="cursor:pointer;font-weight:600;color:#2540b8">Jak to działa i dlaczego warto?</summary>
+            <p style="margin:.8rem 0 .5rem">WebSub to mechanizm <strong>push</strong>. Zamiast czekać, aż Googlebot sam zajrzy, przy publikacji pingujemy hub, a hub natychmiast mówi subskrybentom (m.in. Google): „feed się zmienił, pobierz go ponownie". To standardowy duet z <strong>News Sitemap</strong> dla wydawców i znacznie skuteczniejszy dla newsów niż Indexing API (który oficjalnie obsługuje tylko oferty pracy i transmisje).</p>
+            <ol style="padding-left:1.3rem;line-height:1.9">
+                <li>Feed RSS (<code><?= e(websubFeedUrl()) ?></code>) deklaruje hub i samego siebie — robi to CMS automatycznie, gdy WebSub jest włączony.</li>
+                <li>Po publikacji artykułu CMS wysyła <code>POST hub.mode=publish&amp;hub.url=&lt;FEED&gt;</code> do huba (kanał „WebSub" w Historii).</li>
+                <li>Pingujemy <strong>URL FEEDU</strong>, nie pojedynczego artykułu — hub mówi tylko „ten feed się zmienił". Nowy artykuł jest już w feedzie (feed jest dynamiczny), więc kolejność jest poprawna.</li>
+                <li>Sukces huba to zwykle HTTP 204. Hub <em>sygnalizuje</em> — Google i tak stosuje własne filtry jakości.</li>
+            </ol>
+            <p style="margin:.5rem 0 0;font-size:.85rem;color:#6b7280">Walidację implementacji sprawdzisz na <a href="https://websub.rocks/" target="_blank" rel="noopener">websub.rocks ↗</a>. Feed musi być publicznie pobieralny (200 OK, niezablokowany w robots.txt).</p>
+        </details>
+
+        <form method="post" class="settings-form">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="action" value="save_websub">
+
+            <fieldset class="radio-group">
+                <legend>Włączenie</legend>
+                <label class="checkbox">
+                    <input type="checkbox" name="websub_enabled" value="1" <?= websubEnabled() ? 'checked' : '' ?>>
+                    Włącz WebSub — pinguj hub przy publikacji (wymaga włączonej „Automatyzacji")
+                </label>
+            </fieldset>
+
+            <label>URL huba
+                <input type="text" name="websub_hub_url" value="<?= e(setting('websub_hub_url', 'https://pubsubhubbub.appspot.com/')) ?>"
+                    placeholder="https://pubsubhubbub.appspot.com/" style="font-family:ui-monospace,monospace">
+                <span class="hint">Domyślnie publiczny hub Google (darmowy). Alternatywy: Superfeedr, własny hub.</span>
+            </label>
+
+            <label>URL feedu (opcjonalnie)
+                <input type="text" name="websub_feed_url" value="<?= e(setting('websub_feed_url', '')) ?>"
+                    placeholder="<?= e(rtrim(siteBaseUrl(),'/')) ?>/feed.php" style="font-family:ui-monospace,monospace">
+                <span class="hint">Puste = automatycznie <code><?= e(websubFeedUrl()) ?></code>. Zmień tylko jeśli masz osobny feed newsowy.</span>
+            </label>
+
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem">
+                <button type="submit" class="btn btn--primary">Zapisz</button>
+                <button type="submit" form="form-websub-ping" class="btn">Pingnij hub teraz (test)</button>
+            </div>
+        </form>
+        <form id="form-websub-ping" method="post" style="display:none">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="action" value="websub_ping">
         </form>
     </section>
 
@@ -330,6 +472,173 @@ $tab = $_GET['tab'] ?? (isset($_GET['#']) ? '' : 'console');
                 <button type="submit" class="btn btn--primary">Zapisz</button>
             </div>
         </form>
+    </section>
+
+    <?php /* ========== MONITORING (GSC URL INSPECTION) ========== */ elseif ($tab === 'monitor'): ?>
+    <section class="settings-card" id="monitor">
+        <h2 style="margin-top:0">Monitoring indeksacji (Google URL Inspection API)</h2>
+
+        <details style="margin-bottom:1.25rem;background:#f8f9ff;border:1px solid #dde3ff;border-radius:6px;padding:.8rem 1rem">
+            <summary style="cursor:pointer;font-weight:600;color:#2540b8">Jak to działa, limity i konfiguracja</summary>
+            <p style="margin:.8rem 0 .5rem">Po pewnym czasie od publikacji CMS odpytuje Google, czy dany URL jest w indeksie, i loguje stan (pomiar <strong>time-to-index</strong>, wykrywanie problemów). Używa tego samego klucza konta serwisowego co Google API, ale z osobnym zakresem <code>webmasters.readonly</code>.</p>
+            <ul style="padding-left:1.3rem;line-height:1.9">
+                <li><strong>Osobna pula limitów:</strong> 2000 zapytań/dobę i 600/min na property — <em>nie</em> zżera limitu 200/dobę Indexing API.</li>
+                <li>Konto serwisowe musi być dodane jako <strong>właściciel</strong> property w Search Console (to samo co przy Google API).</li>
+                <li>Logika: pierwszy check dopiero po opóźnieniu (domyślnie 2h), ponawianie co kilka godzin, URL-e oznaczone <strong>PASS</strong> nie są już sprawdzane (oszczędność puli).</li>
+                <li>Odczytujemy: <code>verdict</code> (PASS = w indeksie), <code>coverageState</code>, <code>lastCrawlTime</code>, oraz robots/indexing/pageFetch do diagnozy.</li>
+            </ul>
+        </details>
+
+        <?php $gscReady = $googleKeyData && gscSiteUrl() !== ''; ?>
+        <?php if (!$googleKeyData): ?>
+            <div class="flash flash--error" style="margin-bottom:1rem">Brak klucza konta serwisowego. Wgraj go w zakładce <a href="?tab=google">Google API</a> — ten sam klucz obsługuje monitoring.</div>
+        <?php endif; ?>
+
+        <!-- Podsumowanie -->
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem">
+            <?php
+            $cards = [
+                ['W indeksie (PASS)', (int)$monSummary['pass'], '#16a34a'],
+                ['Oczekuje', (int)$monSummary['pending'], '#d97706'],
+                ['Problem', (int)$monSummary['fail'], '#dc2626'],
+                ['Monitorowane', (int)$monSummary['total'], '#2540b8'],
+            ];
+            foreach ($cards as $c): ?>
+                <div style="flex:1;min-width:120px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:.75rem 1rem">
+                    <div style="font-size:1.5rem;font-weight:700;color:<?= $c[2] ?>"><?= $c[1] ?></div>
+                    <div style="font-size:.8rem;color:#6b7280"><?= e($c[0]) ?></div>
+                </div>
+            <?php endforeach; ?>
+            <div style="flex:1;min-width:140px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:.75rem 1rem">
+                <div style="font-size:1.5rem;font-weight:700;color:#111">
+                    <?= $monSummary['avg_ttiminutes'] !== null ? e(_fmtTti((int)$monSummary['avg_ttiminutes'])) : '—' ?>
+                </div>
+                <div style="font-size:.8rem;color:#6b7280">Śr. czas do indeksacji</div>
+            </div>
+        </div>
+
+        <!-- Konfiguracja -->
+        <form method="post" class="settings-form" style="margin-bottom:1.5rem">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+            <input type="hidden" name="action" value="save_gsc">
+
+            <fieldset class="radio-group">
+                <legend>Włączenie</legend>
+                <label class="checkbox">
+                    <input type="checkbox" name="gsc_enabled" value="1" <?= gscInspectionEnabled() ? 'checked' : '' ?>>
+                    Włącz monitoring indeksacji
+                </label>
+                <label class="checkbox">
+                    <input type="checkbox" name="gsc_monitor_auto" value="1" <?= gscMonitorAutoEnabled() ? 'checked' : '' ?>>
+                    Automatyczne sprawdzanie przy cronie (auto-import)
+                </label>
+            </fieldset>
+
+            <label>Property w Search Console (siteUrl)
+                <input type="text" name="gsc_site_url" value="<?= e(gscSiteUrl()) ?>"
+                    placeholder="sc-domain:<?= e(parse_url(siteBaseUrl(), PHP_URL_HOST) ?: 'przyklad.pl') ?>" style="font-family:ui-monospace,monospace">
+                <span class="hint">Property domenowa: <code>sc-domain:twojadomena.pl</code> · Prefiks URL: <code><?= e(rtrim(siteBaseUrl(),'/')) ?>/</code></span>
+            </label>
+
+            <div style="display:flex;gap:1rem;flex-wrap:wrap">
+                <label style="flex:1;min-width:160px">Opóźnienie 1. checku (min)
+                    <input type="number" name="gsc_first_check_delay_min" value="<?= e(setting('gsc_first_check_delay_min','120')) ?>" min="0">
+                </label>
+                <label style="flex:1;min-width:160px">Ponawianie co (godz.)
+                    <input type="number" name="gsc_recheck_hours" value="<?= e(setting('gsc_recheck_hours','12')) ?>" min="1">
+                </label>
+                <label style="flex:1;min-width:160px">Tura crona co (min)
+                    <input type="number" name="gsc_check_interval_minutes" value="<?= e(setting('gsc_check_interval_minutes','180')) ?>" min="5">
+                </label>
+                <label style="flex:1;min-width:160px">URL-i na turę
+                    <input type="number" name="gsc_batch_per_run" value="<?= e(setting('gsc_batch_per_run','20')) ?>" min="1">
+                </label>
+                <label style="flex:1;min-width:160px">Miękki limit dzienny
+                    <input type="number" name="gsc_daily_quota" value="<?= e(setting('gsc_daily_quota','1800')) ?>" min="1" max="2000">
+                </label>
+            </div>
+
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.5rem">
+                <button type="submit" class="btn btn--primary">Zapisz</button>
+                <?php if ($googleKeyData): ?>
+                    <button type="submit" form="form-gsc-test" class="btn">Testuj połączenie</button>
+                    <button type="submit" form="form-gsc-check" class="btn" <?= $gscReady ? '' : 'disabled' ?>>↻ Sprawdź teraz (tura)</button>
+                <?php endif; ?>
+                <span class="hint" style="margin:0">Pula dziś: <strong><?= gscQuotaUsed() ?></strong>/<?= gscQuotaLimit() ?></span>
+            </div>
+        </form>
+        <form id="form-gsc-test" method="post" style="display:none">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>"><input type="hidden" name="action" value="gsc_test">
+        </form>
+        <form id="form-gsc-check" method="post" style="display:none">
+            <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>"><input type="hidden" name="action" value="gsc_check_now">
+        </form>
+
+        <!-- Tabela stanu -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;flex-wrap:wrap;gap:.5rem">
+            <h3 style="margin:0">Stan per URL (<?= count($monRows) ?>)</h3>
+            <?php if ($monRows): ?>
+            <form method="post" onsubmit="return confirm('Wyczyścić dane monitoringu?')">
+                <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>"><input type="hidden" name="action" value="clear_monitor">
+                <button type="submit" class="btn">Wyczyść</button>
+            </form>
+            <?php endif; ?>
+        </div>
+
+        <?php if (!$monRows): ?>
+            <p class="hint">Brak danych. Monitorowane URL-e pojawią się po publikacji (gdy monitoring włączony) lub po pierwszej turze sprawdzania.</p>
+        <?php else: ?>
+        <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+                <thead>
+                    <tr style="background:#f3f4f6;text-align:left">
+                        <th style="padding:.5rem .75rem">Artykuł / URL</th>
+                        <th style="padding:.5rem .75rem;white-space:nowrap">Verdict</th>
+                        <th style="padding:.5rem .75rem">Stan pokrycia</th>
+                        <th style="padding:.5rem .75rem;white-space:nowrap">Ostatni crawl</th>
+                        <th style="padding:.5rem .75rem;white-space:nowrap">Time-to-index</th>
+                        <th style="padding:.5rem .75rem;white-space:nowrap">Checki</th>
+                        <th style="padding:.5rem .75rem"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($monRows as $r):
+                    $v = $r['verdict'] ?? '';
+                    [$vColor, $vLabel] = $v === 'PASS' ? ['#16a34a', '✓ PASS']
+                        : (($v === 'FAIL' || $v === 'PARTIAL') ? ['#dc2626', '✗ ' . $v]
+                        : ['#9ca3af', $r['last_checked_at'] ? ($v ?: 'NEUTRAL') : 'nie sprawdzono']);
+                    $tti = (!empty($r['published_at']) && !empty($r['indexed_at']))
+                        ? _fmtTti((int)round((strtotime($r['indexed_at']) - strtotime($r['published_at'])) / 60)) : '—';
+                ?>
+                    <tr style="border-top:1px solid #e5e7eb">
+                        <td style="padding:.4rem .75rem;max-width:320px">
+                            <?php if (!empty($r['post_title'])): ?>
+                                <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px"><?= e($r['post_title']) ?></div>
+                            <?php endif; ?>
+                            <a href="<?= e($r['url']) ?>" target="_blank" rel="noopener" style="color:#2540b8;word-break:break-all;font-size:.76rem"><?= e($r['url']) ?></a>
+                            <?php if (!empty($r['last_error'])): ?><div style="color:#dc2626;font-size:.72rem"><?= e(mb_substr($r['last_error'],0,120)) ?></div><?php endif; ?>
+                        </td>
+                        <td style="padding:.4rem .75rem;white-space:nowrap;font-weight:600;color:<?= $vColor ?>"><?= e($vLabel) ?></td>
+                        <td style="padding:.4rem .75rem;color:#374151;max-width:200px"><?= e($r['coverage_state'] ?? '—') ?></td>
+                        <td style="padding:.4rem .75rem;white-space:nowrap;color:#6b7280"><?= e($r['last_crawl_time'] ? substr($r['last_crawl_time'],0,10) : '—') ?></td>
+                        <td style="padding:.4rem .75rem;white-space:nowrap"><?= e($tti) ?></td>
+                        <td style="padding:.4rem .75rem;text-align:center;color:#6b7280"><?= (int)$r['checks_count'] ?></td>
+                        <td style="padding:.4rem .5rem">
+                            <?php if ($gscReady): ?>
+                            <form method="post" style="display:inline">
+                                <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+                                <input type="hidden" name="action" value="gsc_check_one">
+                                <input type="hidden" name="url" value="<?= e($r['url']) ?>">
+                                <button type="submit" class="btn" style="padding:.2rem .5rem;font-size:.75rem" title="Sprawdź teraz">↻</button>
+                            </form>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
     </section>
 
     <?php /* ========== AUTOMATYZACJA ========== */ elseif ($tab === 'general'): ?>

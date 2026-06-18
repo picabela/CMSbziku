@@ -1,7 +1,7 @@
 <?php
 $adminTitle = 'Edycja artykułu';
 require __DIR__ . '/_layout.php';
-require __DIR__ . '/../includes/indexing.php';
+require_once __DIR__ . '/../includes/indexing.php';
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $post = $id ? getPostById($id) : null;
@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 attachTagsToPost((int)$post['id'], $tagNames);
                 attachCategoriesToPost((int)$post['id'], $category, $allCatsSelected);
                 if ($status === 'published' && indexingAutoEnabled()) {
-                    indexingSubmitUrl(postIndexUrl($pdo->query("SELECT slug,category FROM posts WHERE id={$post['id']}")->fetch()));
+                    indexingOnPublish(postIndexUrl($pdo->query("SELECT slug,category FROM posts WHERE id={$post['id']}")->fetch()));
                 }
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł zapisany.'];
             } else {
@@ -103,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 attachTagsToPost($newId, $tagNames);
                 attachCategoriesToPost($newId, $category, $allCatsSelected);
                 if ($status === 'published' && indexingAutoEnabled()) {
-                    indexingSubmitUrl(postIndexUrl($pdo->query("SELECT slug,category FROM posts WHERE id=$newId")->fetch()));
+                    indexingOnPublish(postIndexUrl($pdo->query("SELECT slug,category FROM posts WHERE id=$newId")->fetch()));
                 }
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artykuł utworzony.'];
             }
