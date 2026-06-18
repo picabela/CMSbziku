@@ -1,5 +1,5 @@
 {
-    "version": "1.4.0",
+    "version": "1.4.1",
     "released": "2026-06-18",
-    "notes": "Rozbudowa indeksacji (bzikuCMS3.0): push przez HUB WebSub/PubSubHubbub — feed RSS deklaruje rel=hub i rel=self, a CMS pinguje hub (domyslnie pubsubhubbub.appspot.com) zaraz po publikacji artykulu/strony. Nowy monitoring indeksacji oparty o Google Search Console URL Inspection API: okresowe sprawdzanie verdict/coverageState/lastCrawlTime, pomiar time-to-index per artykul, osobna pula limitow (2000/dobe/property), throttlowane sprawdzanie przy cronie z opoznieniem pierwszego checku i pomijaniem URL-i juz zaindeksowanych. Wszystkie kanaly (Google API, IndexNow, WebSub) wpiete w jeden hook publikacji i logowane wspolnie. Nowe zakladki w panelu Indeksowanie: WebSub (HUB) oraz Monitoring."
+    "notes": "Aktualizacja .htaccess wraz z kodem: updater nie pomija juz .htaccess (zapisuje kopie .htaccess.bak przed nadpisaniem), dzieki czemu nowe reguly przepisan trafiaja na serwer po kliknieciu Aktualizuj. Dodatkowo mechanizm self-heal dociaga brakujace reguly (m.in. przepisanie sitemap_news.xml -> sitemap_news.php) bez drugiej aktualizacji — uruchamiany z crona, panelu Aktualizacje i po zakonczeniu aktualizacji, raz na wersje. Naprawia sytuacje, gdy /sitemap_news.xml zwracal 404 mimo wlaczonej opcji News Sitemap. Zawiera rozbudowe indeksacji z 1.4.0 (WebSub/HUB push + monitoring indeksacji przez Google Search Console URL Inspection API)."
 }
