@@ -1,5 +1,5 @@
 {
-    "version": "1.4.1",
+    "version": "1.5.0",
     "released": "2026-06-18",
-    "notes": "Aktualizacja .htaccess wraz z kodem: updater nie pomija juz .htaccess (zapisuje kopie .htaccess.bak przed nadpisaniem), dzieki czemu nowe reguly przepisan trafiaja na serwer po kliknieciu Aktualizuj. Dodatkowo mechanizm self-heal dociaga brakujace reguly (m.in. przepisanie sitemap_news.xml -> sitemap_news.php) bez drugiej aktualizacji — uruchamiany z crona, panelu Aktualizacje i po zakonczeniu aktualizacji, raz na wersje. Naprawia sytuacje, gdy /sitemap_news.xml zwracal 404 mimo wlaczonej opcji News Sitemap. Zawiera rozbudowe indeksacji z 1.4.0 (WebSub/HUB push + monitoring indeksacji przez Google Search Console URL Inspection API)."
+    "notes": "Petla naprawcza indeksacji: niezaindeksowane URL-e (verdict != PASS) sa automatycznie ponawiane przez kanaly URL-owe (Google Indexing API / IndexNow) po przekroczeniu progu czasu od publikacji. Domyslnie: 1. ponowienie po 24h, 2. po 72h, maks. 2 proby na URL — wszystko konfigurowalne w Indeksowanie -> Monitoring. Dodano przycisk recznego zgloszenia wszystkich niezaindeksowanych ('Zglos niezaindeksowane teraz') oraz per-wiersz przycisk ponowienia pushu. Tabela 'Stan per URL' przeprojektowana (table-layout:fixed, zawijanie zamiast poziomego suwaka) + kolumna licznika ponowien. Bazuje na monitoringu z 1.4.x (WebSub/HUB push + GSC URL Inspection API)."
 }

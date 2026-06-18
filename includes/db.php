@@ -218,6 +218,8 @@ function initSchema(PDO $pdo): void {
             checks_count     INTEGER DEFAULT 0,
             last_checked_at  DATETIME,
             last_error       TEXT,
+            resubmit_count   INTEGER DEFAULT 0,   -- ile razy pętla naprawcza ponowiła push tego URL
+            last_resubmit_at DATETIME,            -- kiedy ostatnio ponowiono push
             created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL
@@ -238,6 +240,8 @@ function initSchema(PDO $pdo): void {
     addColumnIfMissing($pdo, 'posts', 'show_toc', "INTEGER");  // NULL = global, 0/1 = override
     addColumnIfMissing($pdo, 'posts', 'nofollow_links', "INTEGER DEFAULT 0");  // 1 = wszystkie linki wych. w artykule nofollow
     addColumnIfMissing($pdo, 'posts', 'faq_json', "TEXT");  // JSON [{q,a}] — sekcja FAQ + FAQPage schema
+    addColumnIfMissing($pdo, 'index_status', 'resubmit_count', "INTEGER DEFAULT 0");  // pętla naprawcza: liczba ponowień
+    addColumnIfMissing($pdo, 'index_status', 'last_resubmit_at', "DATETIME");         // pętla naprawcza: ostatnie ponowienie
 
     // Seed domyślnych kategorii (jeśli pusto)
     if ((int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn() === 0) {
@@ -295,6 +299,11 @@ function initSchema(PDO $pdo): void {
         'gsc_check_last_ts'          => '0',
         'gsc_quota_day'              => '',   // YYYY-MM-DD bieżącej puli
         'gsc_quota_used'             => '0',  // zużycie puli w bieżącym dniu
+        // Pętla naprawcza — automatyczne ponawianie pushu dla niezaindeksowanych URL-i
+        'gsc_resubmit_enabled'       => '1',  // automatycznie ponawiaj push przy cronie
+        'gsc_resubmit_after_hours'   => '24', // pierwsze ponowienie dopiero po tylu godz. od publikacji
+        'gsc_resubmit_interval_hours'=> '48', // odstęp między kolejnymi ponowieniami (24h+48h => 1. po 24h, 2. po 72h)
+        'gsc_resubmit_max'           => '2',  // maks. liczba automatycznych ponowień na URL
         // Sprawdzanie aktualizacji przy okazji crona auto-importu
         'update_check_enabled'        => '1',   // sprawdzaj wersję podczas cronu
         'update_auto_install'         => '0',   // instaluj automatycznie (tylko gdy włączone)

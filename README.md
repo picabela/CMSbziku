@@ -118,6 +118,11 @@ spotyka się tu z nowoczesnymi, prostokątnymi kafelkami i pełną responsywnoś
   throttlowane sprawdzanie przy cronie, z opóźnieniem 1. checku i pomijaniem
   URL-i już zaindeksowanych. Współdzieli klucz konta serwisowego z Indexing API
   (scope `webmasters.readonly`).
+- **Pętla naprawcza** — URL-e, które po progu czasu (domyślnie 24 h) wciąż nie są
+  zaindeksowane, są automatycznie ponawiane przez kanały URL-owe (Google/IndexNow):
+  1. ponowienie po 24 h, 2. po 72 h, maks. 2 próby na URL (konfigurowalne). Dostępny
+  też przycisk ręcznego zgłoszenia wszystkich niezaindeksowanych oraz ponowienie
+  per-wiersz w tabeli „Stan per URL".
 
 ---
 

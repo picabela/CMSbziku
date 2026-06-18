@@ -517,6 +517,90 @@ function indexStatusDueForCheck(int $limit): array {
     }
 }
 
+/* ----- Pętla naprawcza: ponawianie pushu dla niezaindeksowanych URL-i ----- */
+
+function gscResubmitEnabled(): bool {
+    return setting('gsc_resubmit_enabled', '1') === '1';
+}
+
+/**
+ * Zwraca URL-e kwalifikujące się do ponownego pushu.
+ * Tryb automatyczny: niezaindeksowane (verdict != PASS), starsze niż próg od publikacji,
+ * poniżej limitu prób i po odstępie od ostatniego ponowienia.
+ * Tryb ręczny ($ignoreThrottle=true): wszystkie aktualnie niezaindeksowane, bez progów i limitu.
+ */
+function indexStatusDueForResubmit(int $limit, bool $ignoreThrottle = false): array {
+    try {
+        if ($ignoreThrottle) {
+            $stmt = db()->prepare("
+                SELECT url FROM index_status
+                WHERE (verdict IS NULL OR verdict != 'PASS')
+                ORDER BY COALESCE(published_at, first_seen_at) DESC
+                LIMIT $limit
+            ");
+            $stmt->execute();
+        } else {
+            $afterH    = max(0, (int)setting('gsc_resubmit_after_hours', '24'));
+            $intervalH = max(1, (int)setting('gsc_resubmit_interval_hours', '48'));
+            $maxTries  = max(1, (int)setting('gsc_resubmit_max', '2'));
+            $stmt = db()->prepare("
+                SELECT url FROM index_status
+                WHERE (verdict IS NULL OR verdict != 'PASS')
+                  AND resubmit_count < ?
+                  AND (published_at IS NULL OR published_at <= datetime('now', ?))
+                  AND (last_resubmit_at IS NULL OR last_resubmit_at <= datetime('now', ?))
+                ORDER BY (last_resubmit_at IS NULL) DESC, COALESCE(published_at, first_seen_at) ASC
+                LIMIT $limit
+            ");
+            $stmt->execute([$maxTries, "-{$afterH} hours", "-{$intervalH} hours"]);
+        }
+        return array_column($stmt->fetchAll(), 'url');
+    } catch (\Throwable $e) {
+        return [];
+    }
+}
+
+/** Ponawia push pojedynczego URL przez aktywne kanały URL-owe (Google/IndexNow). Aktualizuje liczniki. */
+function indexStatusResubmit(string $url): array {
+    $res = indexingSubmitUrl($url);
+    $now = date('Y-m-d H:i:s');
+    try {
+        db()->prepare("UPDATE index_status SET resubmit_count = resubmit_count + 1, last_resubmit_at = ?, updated_at = ? WHERE url = ?")
+            ->execute([$now, $now, $url]);
+    } catch (\Throwable $e) {
+        // nie przerywaj tury
+    }
+    return $res;
+}
+
+/**
+ * Pętla naprawcza wpinana w cron oraz wyzwalana ręcznie z panelu.
+ * Ponawia push (Google/IndexNow) dla URL-i, które po przekroczeniu progu czasu
+ * wciąż nie są zaindeksowane. WebSub pinguje feed, więc nie nadaje się do ponawiania
+ * pojedynczego starego URL — pętla naprawcza używa kanałów URL-owych.
+ *
+ * @param bool $force          pomiń wymóg włączonego auto-resubmit (przycisk ręczny)
+ * @param bool $ignoreThrottle ponów wszystkie niezaindeksowane teraz, bez progów/limitu (przycisk ręczny)
+ */
+function gscResubmitDue(bool $force = false, int $limit = 50, bool $ignoreThrottle = false): array {
+    if (!$force && !gscResubmitEnabled()) {
+        return ['ran' => false, 'reason' => 'disabled'];
+    }
+    if (!indexingAnyEnabled()) {
+        return ['ran' => false, 'reason' => 'no_channel'];
+    }
+    $urls = indexStatusDueForResubmit($limit, $ignoreThrottle);
+    if (empty($urls)) {
+        return ['ran' => true, 'resubmitted' => 0, 'ok' => 0, 'errors' => 0];
+    }
+    $ok = $err = 0;
+    foreach ($urls as $url) {
+        $res = indexStatusResubmit($url);
+        foreach ($res as $r) { !empty($r['ok']) ? $ok++ : $err++; }
+    }
+    return ['ran' => true, 'resubmitted' => count($urls), 'ok' => $ok, 'errors' => $err];
+}
+
 /**
  * Tura monitoringu wpinana w cron. Throttlowana (gsc_check_interval_minutes),
  * batch (gsc_batch_per_run), z poszanowaniem dziennej puli limitu.
@@ -566,7 +650,12 @@ function gscScheduledMonitor(bool $force = false): array {
         if (!empty($res['ok']) && ($res['verdict'] ?? '') === 'PASS') $pass++;
         elseif (empty($res['ok'])) $fail++;
     }
+
+    // Pętla naprawcza: po sprawdzeniu statusów ponów push dla URL-i wciąż niezaindeksowanych.
+    $resub = gscResubmitDue(false, 50);
+
     return ['checked' => true, 'checked_count' => $checked, 'pass' => $pass, 'errors' => $fail,
+            'resubmitted' => $resub['resubmitted'] ?? 0,
             'quota_used' => gscQuotaUsed(), 'quota_limit' => gscQuotaLimit()];
 }
 
