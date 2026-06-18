@@ -1058,7 +1058,7 @@ class AutoImporter {
 
         if ($status === 'published' && indexingAutoEnabled()) {
             $p = $this->pdo->query("SELECT slug,category FROM posts WHERE id=$postId")->fetch();
-            if ($p) indexingSubmitUrl(postIndexUrl($p));
+            if ($p) indexingOnPublish(postIndexUrl($p));
         }
 
         return $postId;
@@ -1149,6 +1149,15 @@ function runAutoImport(?int $maxPosts = null, bool $force = false, bool $verbose
             }
         } catch (Throwable $e) {
             $res['update_check'] = ['ok' => false, 'error' => $e->getMessage()];
+        }
+        // Przy okazji tego samego cronu: throttlowany monitoring indeksacji (GSC URL Inspection).
+        try {
+            if (function_exists('gscScheduledMonitor')) {
+                $mon = gscScheduledMonitor();
+                if (!empty($mon['checked'])) $res['index_monitor'] = $mon;
+            }
+        } catch (Throwable $e) {
+            $res['index_monitor'] = ['ok' => false, 'error' => $e->getMessage()];
         }
         return $res;
     } finally {

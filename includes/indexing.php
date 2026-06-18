@@ -39,13 +39,13 @@ function _indexingBase64Url(string $data): string {
     return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
 }
 
-function _indexingGoogleJwt(array $key): ?string {
+function _indexingGoogleJwt(array $key, string $scope = 'https://www.googleapis.com/auth/indexing'): ?string {
     if (empty($key['client_email']) || empty($key['private_key'])) return null;
     $header  = _indexingBase64Url((string)json_encode(['alg' => 'RS256', 'typ' => 'JWT']));
     $now     = time();
     $payload = _indexingBase64Url((string)json_encode([
         'iss'   => $key['client_email'],
-        'scope' => 'https://www.googleapis.com/auth/indexing',
+        'scope' => $scope,
         'aud'   => 'https://oauth2.googleapis.com/token',
         'exp'   => $now + 3600,
         'iat'   => $now,
@@ -90,10 +90,14 @@ function _indexingHttpPost(string $url, string $body, array $headers, int $timeo
     return ['code' => $code, 'body' => (string)$resp];
 }
 
-function indexingGoogleGetToken(): ?string {
+function indexingGoogleGetToken(string $scope = 'https://www.googleapis.com/auth/indexing'): ?string {
+    static $cache = [];
+    if (isset($cache[$scope]) && $cache[$scope]['exp'] > time()) {
+        return $cache[$scope]['token'];
+    }
     $key = indexingGoogleKeyData();
     if (!$key) return null;
-    $jwt = _indexingGoogleJwt($key);
+    $jwt = _indexingGoogleJwt($key, $scope);
     if (!$jwt) return null;
     $r = _indexingHttpPost(
         'https://oauth2.googleapis.com/token',
@@ -101,7 +105,9 @@ function indexingGoogleGetToken(): ?string {
         ['Content-Type: application/x-www-form-urlencoded']
     );
     $data = json_decode($r['body'], true);
-    return $data['access_token'] ?? null;
+    $token = $data['access_token'] ?? null;
+    if ($token) $cache[$scope] = ['token' => $token, 'exp' => time() + 3000];
+    return $token;
 }
 
 function indexingGoogleSubmitUrl(string $url, string $type = 'URL_UPDATED'): array {
@@ -256,4 +262,367 @@ function indexingSubmissionCounts(): array {
         // brak tabeli/log — zwróć pusto
     }
     return $map;
+}
+
+/* ============================================================
+ *  WebSub / PubSubHubbub — push przez HUB (Priorytet 1)
+ * ============================================================
+ *
+ * Idea: przy publikacji pingujemy hub (POST hub.mode=publish&hub.url=<FEED>),
+ * a hub powiadamia subskrybentów (m.in. Google) „feed się zmienił, pobierz go".
+ * Kluczowe: pingujemy URL FEEDU (nie pojedynczego artykułu), a nowy artykuł
+ * musi już być w feedzie w momencie pinga. Feed (feed.php) jest dynamiczny —
+ * czyta bazę na żywo — więc kolejność publikacja → ping jest zawsze poprawna.
+ */
+
+function websubEnabled(): bool {
+    return setting('websub_enabled', '0') === '1';
+}
+
+function websubHubUrl(): string {
+    $u = trim((string)setting('websub_hub_url', ''));
+    return $u !== '' ? $u : 'https://pubsubhubbub.appspot.com/';
+}
+
+/** URL feedu zgłaszanego do huba (puste ustawienie = auto z kanonicznej bazy). */
+function websubFeedUrl(): string {
+    $u = trim((string)setting('websub_feed_url', ''));
+    if ($u !== '') return $u;
+    return rtrim((string)(function_exists('siteBaseUrl') ? siteBaseUrl() : BASE_URL), '/') . '/feed.php';
+}
+
+/**
+ * Pinguje hub, że feed się zmienił. Zwraca ['ok'=>bool,'msg'=>string].
+ * Sukces huba to zwykle HTTP 204 No Content (akceptujemy całe 2xx).
+ */
+function websubPublish(?string $feedUrl = null): array {
+    $hub  = websubHubUrl();
+    $feed = $feedUrl ?: websubFeedUrl();
+    if ($feed === '' || !filter_var($feed, FILTER_VALIDATE_URL)) {
+        return ['ok' => false, 'msg' => 'Nieprawidłowy URL feedu.'];
+    }
+    $r = _indexingHttpPost(
+        $hub,
+        http_build_query(['hub.mode' => 'publish', 'hub.url' => $feed]),
+        ['Content-Type: application/x-www-form-urlencoded']
+    );
+    $ok   = $r['code'] >= 200 && $r['code'] < 300;
+    $body = mb_substr(trim((string)$r['body']), 0, 250);
+    return ['ok' => $ok, 'msg' => "HTTP {$r['code']}" . ($body !== '' ? ": $body" : ''), 'feed' => $feed];
+}
+
+/**
+ * Centralny hook publikacji: zgłoś URL do kanałów instant-indexing (Google/IndexNow)
+ * i — jeśli włączone — pingnij hub WebSub. Wołać po opublikowaniu artykułu/strony,
+ * gdy włączono indexing_auto_on_publish.
+ */
+function indexingOnPublish(string $url): array {
+    $results = indexingSubmitUrl($url);
+    if (websubEnabled()) {
+        $w = websubPublish();
+        $results['websub'] = $w;
+        _indexingLog($w['feed'] ?? websubFeedUrl(), 'WebSub', $w['ok'], $w['msg']);
+    }
+    // Zarejestruj URL w monitoringu indeksacji (jeśli włączony), by liczyć time-to-index.
+    if (gscInspectionEnabled()) {
+        indexStatusTrack(indexingNormalizeUrl($url));
+    }
+    return $results;
+}
+
+/* ============================================================
+ *  Monitoring indeksacji — Google Search Console URL Inspection API
+ *  (Priorytet 2). Osobna pula limitów: 2000/dobę i 600/min na property.
+ * ============================================================ */
+
+function gscInspectionEnabled(): bool {
+    return setting('gsc_inspection_enabled', '0') === '1';
+}
+
+function gscSiteUrl(): string {
+    return trim((string)setting('gsc_site_url', ''));
+}
+
+function gscMonitorAutoEnabled(): bool {
+    return setting('gsc_monitor_auto', '0') === '1';
+}
+
+/** Token z zakresem tylko-do-odczytu Search Console (osobny scope od Indexing API). */
+function gscGetToken(): ?string {
+    return indexingGoogleGetToken('https://www.googleapis.com/auth/webmasters.readonly');
+}
+
+/* ----- Pula limitu (miękka, liczona po naszej stronie, reset dzienny) ----- */
+
+function _gscQuotaRollover(): void {
+    $today = date('Y-m-d');
+    if (setting('gsc_quota_day', '') !== $today) {
+        setSetting('gsc_quota_day', $today);
+        setSetting('gsc_quota_used', '0');
+    }
+}
+
+function gscQuotaUsed(): int {
+    _gscQuotaRollover();
+    return (int)setting('gsc_quota_used', '0');
+}
+
+function gscQuotaLimit(): int {
+    return max(1, (int)setting('gsc_daily_quota', '1800'));
+}
+
+function gscQuotaRemaining(): int {
+    return max(0, gscQuotaLimit() - gscQuotaUsed());
+}
+
+function _gscQuotaConsume(int $n = 1): void {
+    _gscQuotaRollover();
+    setSetting('gsc_quota_used', (string)(gscQuotaUsed() + $n));
+}
+
+/**
+ * Odpytuje URL Inspection API o stan jednego URL.
+ * Zwraca znormalizowaną tablicę pól + 'ok' i 'raw_code'.
+ */
+function gscInspectUrl(string $inspectionUrl, ?string $siteUrl = null): array {
+    if (!function_exists('openssl_sign')) {
+        return ['ok' => false, 'error' => 'Wymagane rozszerzenie PHP openssl.'];
+    }
+    $siteUrl = $siteUrl ?: gscSiteUrl();
+    if ($siteUrl === '') {
+        return ['ok' => false, 'error' => 'Brak skonfigurowanej property (gsc_site_url).'];
+    }
+    $token = gscGetToken();
+    if (!$token) {
+        return ['ok' => false, 'error' => 'Nie udało się pobrać tokenu GSC (sprawdź klucz JSON i scope).'];
+    }
+    $r = _indexingHttpPost(
+        'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',
+        (string)json_encode([
+            'inspectionUrl' => $inspectionUrl,
+            'siteUrl'       => $siteUrl,
+            'languageCode'  => SITE_LANG,
+        ]),
+        ['Content-Type: application/json', "Authorization: Bearer $token"]
+    );
+    _gscQuotaConsume(1);
+
+    $code = (int)$r['code'];
+    $data = json_decode((string)$r['body'], true);
+
+    if ($code < 200 || $code >= 300 || !is_array($data)) {
+        $msg = is_array($data) && isset($data['error']['message'])
+            ? $data['error']['message']
+            : mb_substr((string)$r['body'], 0, 200);
+        return ['ok' => false, 'raw_code' => $code, 'error' => "HTTP $code: $msg"];
+    }
+
+    $idx = $data['inspectionResult']['indexStatusResult'] ?? [];
+    return [
+        'ok'               => true,
+        'raw_code'         => $code,
+        'verdict'          => $idx['verdict']            ?? null,
+        'coverage_state'   => $idx['coverageState']      ?? null,
+        'robots_state'     => $idx['robotsTxtState']     ?? null,
+        'indexing_state'   => $idx['indexingState']      ?? null,
+        'page_fetch_state' => $idx['pageFetchState']     ?? null,
+        'last_crawl_time'  => $idx['lastCrawlTime']      ?? null,
+        'google_canonical' => $idx['googleCanonical']    ?? null,
+    ];
+}
+
+/* ----- Przechowywanie stanu (tabela index_status) ----- */
+
+/** Dodaje URL do monitoringu (jeśli jeszcze go nie ma). Nie odpytuje API. */
+function indexStatusTrack(string $url, ?int $postId = null, ?string $publishedAt = null): void {
+    try {
+        if ($postId === null || $publishedAt === null) {
+            $slug = ltrim((string)parse_url($url, PHP_URL_PATH), '/');
+            $row = db()->prepare('SELECT id, published_at FROM posts WHERE slug = ? LIMIT 1');
+            $row->execute([$slug]);
+            if ($p = $row->fetch()) {
+                $postId      = $postId      ?? (int)$p['id'];
+                $publishedAt = $publishedAt ?? $p['published_at'];
+            }
+        }
+        db()->prepare('INSERT OR IGNORE INTO index_status (url, post_id, published_at) VALUES (?, ?, ?)')
+            ->execute([$url, $postId, $publishedAt]);
+    } catch (\Throwable $e) {
+        // nie przerywaj flow publikacji
+    }
+}
+
+/** Zapisuje wynik inspekcji do index_status. */
+function indexStatusSave(string $url, array $res): void {
+    $now = date('Y-m-d H:i:s');
+    $pdo = db();
+    // Upewnij się, że wiersz istnieje (wraz z post_id/published_at jeśli dostępne).
+    indexStatusTrack($url);
+    $cur = $pdo->prepare('SELECT indexed_at FROM index_status WHERE url = ?');
+    $cur->execute([$url]);
+    $existingIndexedAt = $cur->fetchColumn();
+
+    if (!empty($res['ok'])) {
+        $isPass = ($res['verdict'] ?? '') === 'PASS';
+        // indexed_at zapisujemy raz — przy pierwszym PASS (do liczenia time-to-index).
+        $indexedAt = $existingIndexedAt ?: ($isPass ? $now : null);
+        $pdo->prepare("
+            UPDATE index_status SET
+                verdict = ?, coverage_state = ?, robots_state = ?, indexing_state = ?,
+                page_fetch_state = ?, last_crawl_time = ?, indexed_at = ?,
+                checks_count = checks_count + 1, last_checked_at = ?, last_error = NULL, updated_at = ?
+            WHERE url = ?
+        ")->execute([
+            $res['verdict'] ?? null, $res['coverage_state'] ?? null, $res['robots_state'] ?? null,
+            $res['indexing_state'] ?? null, $res['page_fetch_state'] ?? null, $res['last_crawl_time'] ?? null,
+            $indexedAt, $now, $now, $url,
+        ]);
+    } else {
+        $pdo->prepare("
+            UPDATE index_status SET
+                checks_count = checks_count + 1, last_checked_at = ?, last_error = ?, updated_at = ?
+            WHERE url = ?
+        ")->execute([$now, $res['error'] ?? 'błąd', $now, $url]);
+    }
+}
+
+/** Inspekcja pojedynczego URL + zapis stanu. Zwraca wynik gscInspectUrl(). */
+function indexStatusCheckUrl(string $url): array {
+    indexStatusTrack($url);
+    $res = gscInspectUrl($url);
+    indexStatusSave($url, $res);
+    return $res;
+}
+
+/**
+ * Zwraca URL-e wymagające sprawdzenia: zarejestrowane, jeszcze nie PASS,
+ * po upływie opóźnienia od publikacji i odstępu od ostatniego checku.
+ */
+function indexStatusDueForCheck(int $limit): array {
+    $delayMin   = max(0, (int)setting('gsc_first_check_delay_min', '120'));
+    $recheckHrs = max(1, (int)setting('gsc_recheck_hours', '12'));
+    try {
+        $stmt = db()->prepare("
+            SELECT url FROM index_status
+            WHERE (verdict IS NULL OR verdict != 'PASS')
+              AND (published_at IS NULL OR published_at <= datetime('now', ?))
+              AND (last_checked_at IS NULL OR last_checked_at <= datetime('now', ?))
+            ORDER BY (last_checked_at IS NULL) DESC, COALESCE(published_at, first_seen_at) DESC
+            LIMIT $limit
+        ");
+        $stmt->execute(["-{$delayMin} minutes", "-{$recheckHrs} hours"]);
+        return array_column($stmt->fetchAll(), 'url');
+    } catch (\Throwable $e) {
+        return [];
+    }
+}
+
+/**
+ * Tura monitoringu wpinana w cron. Throttlowana (gsc_check_interval_minutes),
+ * batch (gsc_batch_per_run), z poszanowaniem dziennej puli limitu.
+ * Najpierw rejestruje świeże opublikowane artykuły do monitoringu.
+ */
+function gscScheduledMonitor(bool $force = false): array {
+    if (!gscInspectionEnabled() || !gscMonitorAutoEnabled()) {
+        return ['checked' => false, 'reason' => 'disabled'];
+    }
+    if (gscSiteUrl() === '') {
+        return ['checked' => false, 'reason' => 'no_property'];
+    }
+    if (!$force) {
+        $interval = max(5, (int)setting('gsc_check_interval_minutes', '180'));
+        $last = (int)setting('gsc_check_last_ts', '0');
+        if ($last > 0 && (time() - $last) < $interval * 60) {
+            return ['checked' => false, 'reason' => 'throttled'];
+        }
+    }
+    setSetting('gsc_check_last_ts', (string)time());
+
+    // Dorejestruj opublikowane artykuły z ostatnich 30 dni, których nie ma w monitoringu.
+    try {
+        $rows = db()->query("
+            SELECT slug, id, published_at FROM posts
+            WHERE status = 'published' AND published_at >= datetime('now', '-30 days')
+        ")->fetchAll();
+        foreach ($rows as $p) {
+            indexStatusTrack(absoluteSiteUrl($p['slug']), (int)$p['id'], $p['published_at']);
+        }
+    } catch (\Throwable $e) {
+        // ignoruj
+    }
+
+    $remaining = gscQuotaRemaining();
+    if ($remaining <= 0) {
+        return ['checked' => true, 'reason' => 'quota_exhausted', 'checked_count' => 0];
+    }
+    $batch = min(max(1, (int)setting('gsc_batch_per_run', '20')), $remaining);
+    $urls  = indexStatusDueForCheck($batch);
+
+    $checked = $pass = $fail = 0;
+    foreach ($urls as $url) {
+        if (gscQuotaRemaining() <= 0) break;
+        $res = indexStatusCheckUrl($url);
+        $checked++;
+        if (!empty($res['ok']) && ($res['verdict'] ?? '') === 'PASS') $pass++;
+        elseif (empty($res['ok'])) $fail++;
+    }
+    return ['checked' => true, 'checked_count' => $checked, 'pass' => $pass, 'errors' => $fail,
+            'quota_used' => gscQuotaUsed(), 'quota_limit' => gscQuotaLimit()];
+}
+
+/* ----- Odczyt dla panelu ----- */
+
+function indexStatusList(int $limit = 300): array {
+    try {
+        return db()->query("
+            SELECT s.*, p.title AS post_title, p.slug AS post_slug
+            FROM index_status s
+            LEFT JOIN posts p ON p.id = s.post_id
+            ORDER BY COALESCE(s.published_at, s.first_seen_at) DESC
+            LIMIT $limit
+        ")->fetchAll();
+    } catch (\Throwable $e) {
+        return [];
+    }
+}
+
+function indexStatusSummary(): array {
+    $out = ['total' => 0, 'pass' => 0, 'pending' => 0, 'fail' => 0, 'avg_ttiminutes' => null];
+    try {
+        $rows = db()->query('SELECT verdict, published_at, indexed_at FROM index_status')->fetchAll();
+        $ttiSum = 0; $ttiN = 0;
+        foreach ($rows as $r) {
+            $out['total']++;
+            if (($r['verdict'] ?? '') === 'PASS') {
+                $out['pass']++;
+                if (!empty($r['published_at']) && !empty($r['indexed_at'])) {
+                    $d = strtotime($r['indexed_at']) - strtotime($r['published_at']);
+                    if ($d > 0) { $ttiSum += $d; $ttiN++; }
+                }
+            } elseif (($r['verdict'] ?? '') === 'FAIL' || ($r['verdict'] ?? '') === 'PARTIAL') {
+                $out['fail']++;
+            } else {
+                $out['pending']++;
+            }
+        }
+        if ($ttiN > 0) $out['avg_ttiminutes'] = (int)round($ttiSum / $ttiN / 60);
+    } catch (\Throwable $e) {
+        // pusto
+    }
+    return $out;
+}
+
+function indexStatusClear(): void {
+    try { db()->exec('DELETE FROM index_status'); } catch (\Throwable $e) {}
+}
+
+/** Formatuje liczbę minut na czytelny czas: „45 min", „6 h 12 min", „2 dni 3 h". */
+function _fmtTti(int $minutes): string {
+    if ($minutes < 60) return $minutes . ' min';
+    if ($minutes < 1440) {
+        $h = intdiv($minutes, 60); $m = $minutes % 60;
+        return $h . ' h' . ($m ? " $m min" : '');
+    }
+    $d = intdiv($minutes, 1440); $h = intdiv($minutes % 1440, 60);
+    return $d . ' ' . ($d === 1 ? 'dzień' : 'dni') . ($h ? " $h h" : '');
 }

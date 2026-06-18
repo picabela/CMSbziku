@@ -1,5 +1,5 @@
 {
-    "version": "1.3.2",
-    "released": "2026-06-09",
-    "notes": "Znacznie lepsze wykrywanie dat publikacji przy imporcie ze zrodel HTML: daty tekstowe w tresci strony (polskie i angielskie nazwy miesiecy, np. 9 cze 2026 lub Jun 9 2026), data w adresie URL artykulu, element time bez atrybutu datetime. Dodatkowo przy kazdym zrodle mozna recznie wskazac selektor daty oraz selektor tresci artykulu (CSS lub XPath) — ustawienie zapamietywane przy zrodle, z krotka instrukcja w formularzu. Reczny selektor ma najwyzszy priorytet, a selektor tresci daje czystszy tekst do streszczenia AI."
+    "version": "1.4.0",
+    "released": "2026-06-18",
+    "notes": "Rozbudowa indeksacji (bzikuCMS3.0): push przez HUB WebSub/PubSubHubbub — feed RSS deklaruje rel=hub i rel=self, a CMS pinguje hub (domyslnie pubsubhubbub.appspot.com) zaraz po publikacji artykulu/strony. Nowy monitoring indeksacji oparty o Google Search Console URL Inspection API: okresowe sprawdzanie verdict/coverageState/lastCrawlTime, pomiar time-to-index per artykul, osobna pula limitow (2000/dobe/property), throttlowane sprawdzanie przy cronie z opoznieniem pierwszego checku i pomijaniem URL-i juz zaindeksowanych. Wszystkie kanaly (Google API, IndexNow, WebSub) wpiete w jeden hook publikacji i logowane wspolnie. Nowe zakladki w panelu Indeksowanie: WebSub (HUB) oraz Monitoring."
 }

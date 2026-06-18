@@ -200,6 +200,30 @@ function initSchema(PDO $pdo): void {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_indexing_log_created ON indexing_log(created_at);
+
+        -- Monitoring indeksacji w Google (URL Inspection API) — stan per URL.
+        CREATE TABLE IF NOT EXISTS index_status (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            url              TEXT    NOT NULL UNIQUE,
+            post_id          INTEGER,
+            verdict          TEXT,    -- PASS / PARTIAL / FAIL / NEUTRAL
+            coverage_state   TEXT,    -- np. 'Submitted and indexed', 'Crawled - currently not indexed'
+            robots_state     TEXT,
+            indexing_state   TEXT,
+            page_fetch_state TEXT,
+            last_crawl_time  TEXT,    -- ISO8601 z Google
+            indexed_at       DATETIME,  -- kiedy po raz pierwszy zobaczyliśmy verdict=PASS
+            first_seen_at    DATETIME DEFAULT CURRENT_TIMESTAMP,  -- kiedy URL trafił do monitoringu
+            published_at     DATETIME,  -- data publikacji artykułu (do liczenia time-to-index)
+            checks_count     INTEGER DEFAULT 0,
+            last_checked_at  DATETIME,
+            last_error       TEXT,
+            created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_index_status_verdict ON index_status(verdict);
+        CREATE INDEX IF NOT EXISTS idx_index_status_checked ON index_status(last_checked_at);
     ");
 
     // Lekkie migracje dla istniejących instalacji
@@ -255,6 +279,22 @@ function initSchema(PDO $pdo): void {
         'indexing_indexnow_enabled'  => '0',
         'indexing_indexnow_key'      => '',
         'indexing_auto_on_publish'   => '0',
+        // WebSub / PubSubHubbub — push przez HUB (Priorytet 1)
+        'websub_enabled'             => '0',
+        'websub_hub_url'             => 'https://pubsubhubbub.appspot.com/',
+        'websub_feed_url'            => '',   // puste = auto (BASE_URL/feed.php)
+        // Monitoring indeksacji w Google — URL Inspection API (Priorytet 2)
+        'gsc_inspection_enabled'     => '0',
+        'gsc_site_url'               => '',   // np. sc-domain:przyklad.pl albo https://przyklad.pl/
+        'gsc_monitor_auto'           => '0',  // automatyczny check przy cronie
+        'gsc_check_interval_minutes' => '180',// co ile minut tura sprawdzania (throttling crona)
+        'gsc_first_check_delay_min'  => '120',// nie sprawdzaj URL-a wcześniej niż po tylu minutach od publikacji
+        'gsc_recheck_hours'          => '12', // jak często ponawiać check dla URL-i jeszcze nie PASS
+        'gsc_batch_per_run'          => '20', // ile URL-i sprawdzić w jednej turze
+        'gsc_daily_quota'            => '1800',// miękki limit dzienny (pula GSC to 2000/dobę/property)
+        'gsc_check_last_ts'          => '0',
+        'gsc_quota_day'              => '',   // YYYY-MM-DD bieżącej puli
+        'gsc_quota_used'             => '0',  // zużycie puli w bieżącym dniu
         // Sprawdzanie aktualizacji przy okazji crona auto-importu
         'update_check_enabled'        => '1',   // sprawdzaj wersję podczas cronu
         'update_auto_install'         => '0',   // instaluj automatycznie (tylko gdy włączone)

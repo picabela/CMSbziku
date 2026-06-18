@@ -106,6 +106,19 @@ spotyka się tu z nowoczesnymi, prostokątnymi kafelkami i pełną responsywnoś
 - Headery: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
   `Permissions-Policy`.
 
+### Indeksacja i monitoring (panel: **Indeksowanie**)
+- **Google Indexing API** + **IndexNow** (Bing/Yandex) — zgłaszanie URL-i.
+- **WebSub / PubSubHubbub (HUB)** — push przy publikacji: feed RSS deklaruje
+  `rel="hub"` + `rel="self"`, a CMS pinguje hub (domyślnie `pubsubhubbub.appspot.com`)
+  zaraz po publikacji. Skuteczniejsze dla newsów niż Indexing API.
+- **Google News Sitemap** (`/sitemap_news.xml`) — świeże artykuły z ~48h.
+- **Monitoring indeksacji (URL Inspection API)** — okresowe sprawdzanie, czy URL
+  jest w indeksie Google: `verdict` (PASS/FAIL), `coverageState`, `lastCrawlTime`,
+  pomiar **time-to-index** per artykuł. Osobna pula limitów (2000/dobę/property),
+  throttlowane sprawdzanie przy cronie, z opóźnieniem 1. checku i pomijaniem
+  URL-i już zaindeksowanych. Współdzieli klucz konta serwisowego z Indexing API
+  (scope `webmasters.readonly`).
+
 ---
 
 ## Stack technologiczny
