@@ -9,6 +9,16 @@ unset($_SESSION['flash']);
 $remote = null;      // wynik sprawdzenia zdalnej wersji
 $updateLog = null;   // log po aktualizacji/przywracaniu
 
+// Self-heal .htaccess raz na wersję — dla instalacji bez crona, które trafiają tu
+// po aktualizacji wykonanej jeszcze starym updaterem (który pomijał .htaccess).
+try {
+    $curVer = updaterCurrentVersion()['version'];
+    if (setting('htaccess_synced_for', '') !== $curVer) {
+        updaterEnsureHtaccess();
+        setSetting('htaccess_synced_for', $curVer);
+    }
+} catch (\Throwable $e) { /* ignoruj */ }
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCsrf($_POST['csrf'] ?? null)) {
         $flash = ['type' => 'error', 'msg' => 'Nieprawidłowy token CSRF.'];

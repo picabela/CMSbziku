@@ -304,6 +304,7 @@ function initSchema(PDO $pdo): void {
         'update_available_version'    => '',
         'update_available_notes'      => '',
         'update_auto_last_result'     => '',
+        'htaccess_synced_for'         => '',   // wersja, dla której zsynchronizowano reguły .htaccess
         // Top notice (czytelnie wymyślony przekaz)
         'top_notice_enabled' => '1',
         'top_notice_text' => 'Same fakty, bez lania wody. Czytaj wygodnie na ebooku, tablecie lub w przerwie na kawę.',

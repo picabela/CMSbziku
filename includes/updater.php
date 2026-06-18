@@ -44,9 +44,10 @@ function updaterProtectedPaths(): array {
         'data',                  // baza SQLite, kopie, pliki robocze
         'uploads',               // media wgrane przez użytkownika
         'includes/config.php',   // konfiguracja specyficzna dla serwera
-        '.htaccess',             // lokalne reguły serwera
         '.git',                  // repozytorium (jeśli istnieje)
     ];
+    // Uwaga: .htaccess JEST aktualizowany (od v1.4.1). Przed nadpisaniem updater
+    // zapisuje kopię bieżącego pliku jako .htaccess.bak (patrz updaterCopyTree).
 }
 
 function updaterIsProtected(string $relPath): bool {
@@ -57,6 +58,71 @@ function updaterIsProtected(string $relPath): bool {
         }
     }
     return false;
+}
+
+/**
+ * Self-heal .htaccess: dba o to, by zawierał reguły wymagane przez bieżącą wersję
+ * CMS (przepisania „ładnych" adresów). Działa CHIRURGICZNIE — wstawia tylko
+ * brakujące reguły w odpowiednim miejscu, nie rusza pozostałej konfiguracji
+ * serwera (HTTPS, www, nagłówki itd.). Idempotentne; przy zmianie robi .htaccess.bak.
+ *
+ * Po co to, skoro updater i tak kopiuje .htaccess? Bo instalacja, która wciąż ma
+ * STARY updater (chroniący .htaccess), przy aktualizacji do nowej wersji skopiuje
+ * nowy kod, ale .htaccess pominie. Ta funkcja, uruchamiana z nowego kodu (cron /
+ * panel / koniec aktualizacji), dociąga brakujące reguły bez drugiej aktualizacji.
+ *
+ * Zwraca [changed(bool), note(string)].
+ */
+function updaterEnsureHtaccess(): array {
+    $path = updaterRootDir() . '/.htaccess';
+    if (!is_file($path) || !is_readable($path)) {
+        return [false, 'Brak czytelnego .htaccess — pomijam.'];
+    }
+    $content = (string)file_get_contents($path);
+    if (stripos($content, 'RewriteEngine') === false) {
+        return [false, 'Brak mod_rewrite w .htaccess — pomijam.'];
+    }
+
+    // Reguły wymagane przez bieżącą wersję: detektor obecności => [blok, kotwica].
+    // „blok" wstawiany jest ZARAZ PO linii z „kotwicą"; gdy kotwicy brak —
+    // przed regułą artykułu (catch-all).
+    $required = [
+        'sitemap_news.php' => [
+            "    # sitemap_news.xml -> sitemap_news.php (Google News)\n    RewriteRule ^sitemap_news\\.xml$ sitemap_news.php [L]\n",
+            'RewriteRule ^sitemap\\.xml$ sitemap.php [L]',
+        ],
+    ];
+
+    $new = $content;
+    $added = [];
+    foreach ($required as $needle => [$block, $anchor]) {
+        if (strpos($new, $needle) !== false) continue; // reguła już jest
+        $pos = strpos($new, $anchor);
+        if ($pos !== false) {
+            $eol = strpos($new, "\n", $pos);
+            $insertAt = ($eol === false) ? strlen($new) : $eol + 1;
+        } else {
+            // fallback: tuż przed regułą artykułu (catch-all) albo komentarzem do niej
+            $fb = strpos($new, '# Single article:');
+            if ($fb === false) $fb = strpos($new, 'RewriteRule ^([a-z0-9-]+)');
+            $insertAt = ($fb !== false) ? $fb : strlen($new);
+            $block .= "\n";
+        }
+        $new = substr($new, 0, $insertAt) . $block . substr($new, $insertAt);
+        $added[] = $needle;
+    }
+
+    if ($new === $content) {
+        return [false, 'Wszystkie wymagane reguły już obecne.'];
+    }
+    if (!is_writable($path)) {
+        return [false, '.htaccess niezapisywalny — popraw uprawnienia, by dodać reguły: ' . implode(', ', $added) . '.'];
+    }
+    @copy($path, $path . '.bak');
+    if (@file_put_contents($path, $new) === false) {
+        return [false, 'Nie udało się zapisać .htaccess.'];
+    }
+    return [true, 'Dodano brakujące reguły (' . implode(', ', $added) . '); kopia: .htaccess.bak.'];
 }
 
 /** Lokalna wersja z version.json (fallback 0.0.0). */
@@ -179,6 +245,19 @@ function updaterPendingVersion(): string {
  * Zwraca tablicę z opisem tego, co zaszło (do logu cronu).
  */
 function updaterScheduledCheck(bool $force = false): array {
+    // Self-heal .htaccess raz na wersję — most dla instalacji aktualizowanych
+    // jeszcze starym updaterem (który pomijał .htaccess). Tanie: gdy zsynchronizowane,
+    // funkcja nic nie robi i tylko stempluje wersję.
+    try {
+        $cur = updaterCurrentVersion()['version'];
+        if (setting('htaccess_synced_for', '') !== $cur) {
+            updaterEnsureHtaccess();
+            setSetting('htaccess_synced_for', $cur);
+        }
+    } catch (\Throwable $e) {
+        // nie przerywaj sprawdzania aktualizacji
+    }
+
     if (!$force) {
         $interval = max(1, (int)setting('update_check_interval_hours', '6'));
         $last = (int)setting('update_check_last_ts', '0');
@@ -414,6 +493,12 @@ function updaterCopyTree(string $src, string $dest): array {
         } else {
             $dir = dirname($target);
             if (!is_dir($dir)) @mkdir($dir, 0775, true);
+            // Bezpieczeństwo: przed nadpisaniem .htaccess zachowaj kopię bieżącego
+            // (gdyby zawierał własne reguły serwera), żeby dało się go odtworzyć.
+            if ($rel === '.htaccess' && is_file($target)
+                && md5_file($target) !== md5_file($item->getPathname())) {
+                @copy($target, $target . '.bak');
+            }
             if (@copy($item->getPathname(), $target)) {
                 $copied++;
             } else {
@@ -502,6 +587,16 @@ function updaterRunUpdate(): array {
         foreach (array_slice($errors, 0, 10) as $e) $log[] = 'Błąd: ' . $e;
         updaterRrmdir($work);
         return [false, $log, count($errors) . ' plików nie udało się zaktualizować. Przywróć kopię zapasową, jeśli strona działa nieprawidłowo.'];
+    }
+
+    // 6b. Zadbaj o .htaccess: copyTree już go nadpisał (z kopią .bak), ale gdyby
+    // bieżący proces działał jeszcze na starym updaterze, dociągnij brakujące reguły.
+    try {
+        [$hch, $hnote] = updaterEnsureHtaccess();
+        $log[] = 'htaccess: ' . $hnote;
+        setSetting('htaccess_synced_for', updaterCurrentVersion()['version']);
+    } catch (Throwable $t) {
+        $log[] = 'htaccess: ostrzeżenie — ' . $t->getMessage();
     }
 
     // 7. Nowa wersja config.php — nie nadpisujemy, ale sygnalizujemy różnicę
